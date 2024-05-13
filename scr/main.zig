@@ -13,21 +13,29 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
-    const arguments = try std.process.argsAlloc(allocator);
+    const arguments: [][:0]u8 = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, arguments);
 
-    var settings = Settings.init();
-    settings.setSettings(arguments);
+    const settings = try Settings.init(arguments, allocator);
+    defer settings.deinit();
 
     const load_functions = fCollecter.getFuncFilesList(allocator, settings, .load) catch |err| {
-        if (err == std.json.Error.SyntaxError)
+        if (err == std.json.Error.SyntaxError){
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
+        }
+        else {
+            std.debug.print("{any}", .{err});
+        }
         return;
     };
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        std.debug.print("{s}\n", .{func});
+        var function = try fCollecter.Function.init(allocator, settings, func);
+        defer function.deinit();
+
+        while (function.commands.next()) |cmd| {
+            std.debug.print("{s}\n", .{cmd});
+        }
     }
-    std.debug.print("\n{any}\n{s}\n\n", .{settings.abs, settings.path});
 }
