@@ -1,6 +1,8 @@
 # mcexe
-mcexe is a compiler that compiles minecraft datapacks and commands into real executable programs.
-It does that by interpreting different commands, for example `/give @s txt{CustomName:"test_file"}`, and generates zig code. In this case, it creates a `txt` file with the name `test_file` in the `current working directory`. It then compiles the generated zig file to the specified output file.
+mcexe is a compiler that compiles minecraft datapacks and commands into real executable programs.<br>
+It does that by interpreting different commands, for example `/give @s txt{CustomName:"test_file"}`, and generates zig code.<br>
+In this case, it creates a `txt` file with the name `test_file` in the `current working directory`.<br>
+It then compiles the generated zig file to the specified output file.<br>
 Because it use Zig as intermediate language, it will have (nearly) all the capabilities of zig.
 
 
