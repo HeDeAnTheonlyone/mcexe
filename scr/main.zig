@@ -31,7 +31,11 @@ pub fn main() !void {
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        std.debug.print("{s}\n", .{func});
+        var function = try fCollecter.Function.init(allocator, settings, func);
+        defer function.deinit();
+
+        while (function.commands.next()) |cmd| {
+            std.debug.print("{s}\n", .{cmd});
+        }
     }
-    std.debug.print("{s}\n\n", .{settings.path});
 }

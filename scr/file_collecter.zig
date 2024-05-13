@@ -43,18 +43,31 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, settings: Settings, compti
 
 
 // TODO Correctly implement function struct
-const Function = struct {
+pub const Function = struct {
     allocator: std.mem.Allocator,
-    commands: []const []const u8,
-    index: usize = 0,
+    commands: std.mem.SplitIterator(u8, .scalar),
 
     /// Returns a an iteratior struct that holds an allocator and a list of commands
-    pub fn init(self: *Function, allocator: std.mem.Allocator, settings: Settings, function_path: []u8) Function {
-        self.allocator = allocator;
-        const func_path = std.mem.splitScalar(u8, function_path, ':');
-        const full_path = std.fmt.allocPrint(allocator, "{s}{s}{}", .{settings.path, func_path.first(), func_path.next()});
-        _ = full_path;
+    pub fn init(allocator: std.mem.Allocator, settings: Settings, function_path: []u8) !Function {// Function {
+        var func_path = std.mem.splitScalar(u8, function_path, ':');
+        const full_path = try std.fmt.allocPrint(allocator, "{s}/data/{s}/functions/{s}.mcfunction", .{settings.path, func_path.first(), func_path.next().?});
+        defer allocator.free(full_path);
 
-        try std.fs.openDirAbsolute(settings.path, .{});
+        std.debug.print("\n\n{s}\n\n", .{full_path});
+
+        const file = try std.fs.openFileAbsolute(full_path, .{});
+        defer file.close();
+
+        const contents = try file.reader().readAllAlloc(allocator, 65536);
+        const cmds = std.mem.splitScalar(u8, contents, '\n');
+
+        return Function{
+            .allocator = allocator,
+            .commands = cmds
+        };
+    }
+
+    pub fn deinit(self: *const Function) void {
+        self.allocator.free(self.*.commands.buffer);
     }
 };
