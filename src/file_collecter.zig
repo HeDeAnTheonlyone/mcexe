@@ -42,12 +42,11 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, settings: Settings, compti
 
 
 
-// TODO Correctly implement function struct
 pub const Function = struct {
     allocator: std.mem.Allocator,
     commands: std.mem.SplitIterator(u8, .scalar),
 
-    /// Returns a an iteratior struct that holds an allocator and a list of commands
+    /// Returns a struct that holds an allocator and a iterable list of commands
     pub fn init(allocator: std.mem.Allocator, settings: Settings, function_path: []u8) !Function {// Function {
         var func_path = std.mem.splitScalar(u8, function_path, ':');
         const full_path = try std.fmt.allocPrint(allocator, "{s}/data/{s}/functions/{s}.mcfunction", .{settings.path, func_path.first(), func_path.next().?});
