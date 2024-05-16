@@ -74,7 +74,7 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !void {
     };
     const out_file_path = try std.mem.concat(allocator, u8, &out_path_parts);
     defer allocator.free(out_file_path);
-    std.debug.print("\nFile Path: {s}\n", .{out_file_path}); // TEMP
+    std.debug.print("\nFile Path: {s}\n", .{out_file_path}); //TEMP
 
     const out_file = try std.fs.createFileAbsolute(out_file_path, .{ .read = true });
     defer out_file.close();

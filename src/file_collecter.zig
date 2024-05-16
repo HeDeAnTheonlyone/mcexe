@@ -33,7 +33,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, settings: Settings, compti
     const full_path = try std.mem.concat(allocator, u8, &path_parts);
     defer allocator.free(full_path);
 
-    std.debug.print("{s}\n", .{full_path});
+    std.debug.print("{s}\n", .{full_path}); //TEMP
 
     const file = try std.fs.openFileAbsolute(full_path, .{});
     defer file.close();
@@ -64,7 +64,7 @@ pub const Function = struct {
         const full_path = try std.mem.concat(allocator, u8, &path_parts);
         defer allocator.free(full_path);
 
-        std.debug.print("\n\n{s}\n\n", .{full_path});
+        std.debug.print("\n\n{s}\n\n", .{full_path}); //TEMP
 
         const file = try std.fs.openFileAbsolute(full_path, .{});
         defer file.close();
