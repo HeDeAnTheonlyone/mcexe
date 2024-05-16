@@ -1,6 +1,6 @@
 
 const std = @import("std");
-const Settings = @import("settings.zig").Settings;
+const Settings = @import("manager.zig").Settings;
 
 const json = std.json;
 
@@ -24,12 +24,16 @@ const FunctionList = struct {
 };
 
 pub fn getFuncFilesList(allocator: std.mem.Allocator, settings: Settings, comptime func_list: VanillaFunctionLists) !std.json.Parsed(FunctionList) {
-    const full_path = try std.fmt.allocPrint(
-        allocator, 
-        "{s}/data/minecraft/tags/functions/{s}.json",
-        .{settings.path, func_list.getStrName()}
-    );
+    const path_parts = [4][]const u8{
+        settings.path,
+        "/data/minecraft/tags/functions/",
+        func_list.getStrName(),
+        ".json"
+    };
+    const full_path = try std.mem.concat(allocator, u8, &path_parts);
     defer allocator.free(full_path);
+
+    std.debug.print("{s}\n", .{full_path});
 
     const file = try std.fs.openFileAbsolute(full_path, .{});
     defer file.close();
@@ -47,9 +51,17 @@ pub const Function = struct {
     commands: std.mem.SplitIterator(u8, .scalar),
 
     /// Returns a struct that holds an allocator and a iterable list of commands
-    pub fn init(allocator: std.mem.Allocator, settings: Settings, function_path: []u8) !Function {// Function {
+    pub fn init(allocator: std.mem.Allocator, settings: Settings, function_path: []u8) !Function {
         var func_path = std.mem.splitScalar(u8, function_path, ':');
-        const full_path = try std.fmt.allocPrint(allocator, "{s}/data/{s}/functions/{s}.mcfunction", .{settings.path, func_path.first(), func_path.next().?});
+        const path_parts = [6][]const u8{
+            settings.path,
+            "/data/",
+            func_path.first(),
+            "/functions/",
+            func_path.next().?,
+            ".mcfunction"
+        };
+        const full_path = try std.mem.concat(allocator, u8, &path_parts);
         defer allocator.free(full_path);
 
         std.debug.print("\n\n{s}\n\n", .{full_path});
