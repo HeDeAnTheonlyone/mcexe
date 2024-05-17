@@ -21,7 +21,7 @@ pub fn main() !void {
     defer manager.deinitSettings();
     const settings = manager.settings;
 
-    const load_functions = fCollecter.getFuncFilesList(allocator, settings, .load) catch |err| {
+    const load_functions = fCollecter.getFuncFilesList(allocator, settings.path, .load) catch |err| {
         if (err == std.json.Error.SyntaxError){
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
         }
@@ -33,7 +33,7 @@ pub fn main() !void {
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        var function = try fCollecter.Function.init(allocator, settings, func);
+        var function = try fCollecter.Function.init(allocator, settings.path, func);
         defer function.deinit();
 
         try interpreter.evalCmd(function.commands.first());
@@ -74,7 +74,6 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !void {
     };
     const out_file_path = try std.mem.concat(allocator, u8, &out_path_parts);
     defer allocator.free(out_file_path);
-    std.debug.print("\nFile Path: {s}\n", .{out_file_path}); //TEMP
 
     const out_file = try std.fs.createFileAbsolute(out_file_path, .{ .read = true });
     defer out_file.close();

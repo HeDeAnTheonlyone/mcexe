@@ -23,17 +23,15 @@ const FunctionList = struct {
     values: [][]u8
 };
 
-pub fn getFuncFilesList(allocator: std.mem.Allocator, settings: Settings, comptime func_list: VanillaFunctionLists) !std.json.Parsed(FunctionList) {
+pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: VanillaFunctionLists) !std.json.Parsed(FunctionList) {
     const path_parts = [4][]const u8{
-        settings.path,
+        pack_path,
         "/data/minecraft/tags/functions/",
         func_list.getStrName(),
         ".json"
     };
     const full_path = try std.mem.concat(allocator, u8, &path_parts);
     defer allocator.free(full_path);
-
-    std.debug.print("{s}\n", .{full_path}); //TEMP
 
     const file = try std.fs.openFileAbsolute(full_path, .{});
     defer file.close();
@@ -51,10 +49,10 @@ pub const Function = struct {
     commands: std.mem.SplitIterator(u8, .scalar),
 
     /// Returns a struct that holds an allocator and a iterable list of commands
-    pub fn init(allocator: std.mem.Allocator, settings: Settings, function_path: []u8) !Function {
+    pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , function_path: []const u8) !Function {
         var func_path = std.mem.splitScalar(u8, function_path, ':');
         const path_parts = [6][]const u8{
-            settings.path,
+            pack_path,
             "/data/",
             func_path.first(),
             "/functions/",
@@ -63,8 +61,6 @@ pub const Function = struct {
         };
         const full_path = try std.mem.concat(allocator, u8, &path_parts);
         defer allocator.free(full_path);
-
-        std.debug.print("\n\n{s}\n\n", .{full_path}); //TEMP
 
         const file = try std.fs.openFileAbsolute(full_path, .{});
         defer file.close();

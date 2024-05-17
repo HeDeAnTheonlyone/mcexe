@@ -23,12 +23,14 @@ const Status = struct {
         self.code.deinit();
     }
 
+    /// Appends an import, if it doesn't already exists. 
     fn addImportCode(self: *Status, import_code: []const u8) !void {
         if (array.contains([]const u8, self.imports.items, import_code) == null) {
             try self.imports.append(import_code);
         }
     }
 
+    /// Appends a piece of code.
     fn addCode(self: *Status, code: []const u8) !void {
         try self.code.appendSlice(code);
         try self.code.append('\n');
@@ -44,6 +46,12 @@ pub fn deinitInterpreterStatus() void {
 }
 
 
+
+const Commands = enum {
+    none,
+    say,
+    tellraw,
+};
 
 pub fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
@@ -64,13 +72,6 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
 }
 
 
-
-const Commands = enum {
-    none,
-    say,
-    tellraw,
-    give,
-};
 
 fn say(msg: []const u8) !void {
     try status.addImportCode(@constCast("const std = @import(\"std\");"));

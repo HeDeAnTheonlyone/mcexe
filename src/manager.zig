@@ -42,7 +42,6 @@ pub const Settings = struct {
                 }
                 else "";
                 const tmp_full_path = try std.fs.cwd().realpathAlloc(allocator, tmp_path);
-                std.debug.print("\nI want to know this: {s}\n", .{tmp_full_path}); //TEMP
                 std.mem.replaceScalar(u8, tmp_full_path, '\\', '/');
                 break :path_blk tmp_full_path;
             }
