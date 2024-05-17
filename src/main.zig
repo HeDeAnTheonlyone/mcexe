@@ -9,7 +9,7 @@ const interpreter = @import("interpreter.zig");
 // TODO After project testing, remove mcexe.exe from environment variables
 
 pub fn main() !void {
-    initAll();
+    try initAll();
     defer deinitAll();
 
     const allocator = manager.global_allocator;
@@ -26,7 +26,7 @@ pub fn main() !void {
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
         }
         else {
-            std.debug.print("{any}", .{err});
+            std.debug.print("{any}", .{err}); 
         }
         return;
     };
@@ -42,15 +42,17 @@ pub fn main() !void {
         }
     }
 
-    // TODO use this file to print out the code
-    try generateOutFiles(allocator, settings.path);
+    try interpreter.status.flushCode(settings.path);
+
+    // TODO add dynamic compilation of the generated Zig code.
+    //try compileInterpretation(allocator, build,  settings.path);
 }
 
 
 
-fn initAll() void {
+fn initAll() !void {
     manager.initGlobalAllocactor(); // Allocator hast to be initialized before everything else!
-    interpreter.initInterpreterStatus(manager.global_allocator);
+    try interpreter.initInterpreterStatus(manager.global_allocator);
 }
 
 fn deinitAll() void {
@@ -59,22 +61,26 @@ fn deinitAll() void {
 }
 
 
-
-fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !void {
-    var pack_dir = try std.fs.openDirAbsolute(pack_path, .{});
-    defer pack_dir.close();
-    try std.fs.Dir.makePath(pack_dir, "out");
-
+// TODO maybe delete
+fn compileInterpretation(allocator: std.mem.Allocator, b: *std.Build, pack_path: []const u8) !void {
     var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
-    const out_path_parts = [4][]const u8{
+    const namespace = path_iter.first();
+    
+    const path_parts = [_][]const u8{
         pack_path,
         "/out/",
-        path_iter.first(),
+        namespace,
         ".zig"
     };
-    const out_file_path = try std.mem.concat(allocator, u8, &out_path_parts);
-    defer allocator.free(out_file_path);
+    const source_path = try std.mem.concat(allocator, u8, &path_parts);
+    defer allocator.free(source_path);
 
-    const out_file = try std.fs.createFileAbsolute(out_file_path, .{ .read = true });
-    defer out_file.close();
+    const exe = b.addExecutable(.{
+        .name = namespace,
+        .root_source_file = .{ .path = source_path },
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{ .safe })
+    });
+
+    b.installArtifact(exe);
 }

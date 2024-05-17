@@ -1,7 +1,9 @@
 
 const std = @import("std");
-const Settings = @import("manager.zig").Settings;
+// const Settings = @import("manager.zig").Settings;
+const array = @import("util/array.zig");
 
+const ArrayList = std.ArrayList;
 const json = std.json;
 
 
@@ -66,7 +68,10 @@ pub const Function = struct {
         defer file.close();
 
         const contents = try file.reader().readAllAlloc(allocator, 65536);
-        const cmds = std.mem.splitScalar(u8, contents, '\n');
+        const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
+        allocator.free(contents);
+        std.debug.print("\n_c_\n{s}\n_c_\n", .{sanatized_contents}); //TEMP
+        const cmds = std.mem.splitScalar(u8, sanatized_contents, '\n');
 
         return Function{
             .allocator = allocator,
