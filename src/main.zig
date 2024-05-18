@@ -45,7 +45,7 @@ pub fn main() !void {
     try interpreter.status.flushCode(settings.path);
 
     // TODO add dynamic compilation of the generated Zig code.
-    //try compileInterpretation(allocator, build,  settings.path);
+    try compileInterpretation(allocator, settings.path);
 }
 
 
@@ -61,26 +61,55 @@ fn deinitAll() void {
 }
 
 
-// TODO maybe delete
-fn compileInterpretation(allocator: std.mem.Allocator, b: *std.Build, pack_path: []const u8) !void {
+
+fn compileInterpretation(allocator: std.mem.Allocator, pack_path: []const u8) !void {
     var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
     const namespace = path_iter.first();
     
-    const path_parts = [_][]const u8{
+    const exe_dir_path = try std.fs.selfExeDirPathAlloc(allocator);
+    const exe_path_parts = [2][]const u8{
+        exe_dir_path,
+        "/zig.exe"
+    };
+    const exe_path = try std.mem.concat(allocator, u8, &exe_path_parts);
+    defer allocator.free(exe_path);
+    allocator.free(exe_dir_path);
+    std.mem.replaceScalar(u8, exe_path, '\\', '/');
+
+    const source_path_parts = [4][]const u8{
         pack_path,
         "/out/",
         namespace,
         ".zig"
     };
-    const source_path = try std.mem.concat(allocator, u8, &path_parts);
+    const source_path = try std.mem.concat(allocator, u8, &source_path_parts);
     defer allocator.free(source_path);
 
-    const exe = b.addExecutable(.{
-        .name = namespace,
-        .root_source_file = .{ .path = source_path },
-        .target = b.standardTargetOptions(.{}),
-        .optimize = b.standardOptimizeOption(.{ .safe })
-    });
+    const out_path_parts = [_][]const u8{
+        "-femit-bin=",
+        pack_path,
+        "/out/",
+        namespace,
+        ".exe"
+    };
+    const out_path = try std.mem.concat(allocator, u8, &out_path_parts);
+    defer allocator.free(out_path);
 
-    b.installArtifact(exe);
+    // std.debug.print("\n{s}\n{s}\n{s}\n\n", .{
+    //     exe_path,
+    //     source_path,
+    //     out_path
+    // }); //TEMP
+
+    const comp_args = [4][]const u8{
+        exe_path,
+        "build-exe",
+        source_path,
+        out_path
+    };
+
+    var compile = std.process.Child.init(&comp_args, allocator);
+    const result = try std.process.Child.spawnAndWait(&compile);
+
+    std.debug.print("{any}", .{result});
 }

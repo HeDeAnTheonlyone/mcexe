@@ -15,16 +15,16 @@ pub fn contains(comptime T: type, haystack: []T, needle: T) ?usize {
 
 /// Returns a newly allocated array without the scalar value
 pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []T, scalar: T) ![]u8 {
-    var new = ArrayList([]const u8).init(allocator);
-    defer new.deinit();
+    var array_parts = ArrayList([]const u8).init(allocator);
+    defer array_parts.deinit();
     
     var last_index: usize = 0;
     for (buffer, 0..) |element, index| {
         if (element == scalar){
-            try new.append(buffer[last_index..index]);
+            try array_parts.append(buffer[last_index..index]);
             last_index = index + 1;
         }
     }
     
-    return try std.mem.concat(allocator, T, new.items);
+    return try std.mem.concat(allocator, T, array_parts.items);
 }

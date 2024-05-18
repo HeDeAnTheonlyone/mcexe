@@ -9,29 +9,36 @@ pub var status: Status = undefined;
 
 const Status = struct {
     imports: std.ArrayList([]const u8),
+    globals: std.ArrayList([]const u8),
     code: std.ArrayList(u8),
 
     fn init(allocator: std.mem.Allocator) !Status {
         var stat = Status {
             .imports = std.ArrayList([]const u8).init(allocator),
+            .globals = std.ArrayList([]const u8).init(allocator),
             .code = std.ArrayList(u8).init(allocator)
         };
 
-        try stat.addImportCode(@constCast("const std = @import(\"std\");"));
-        try stat.addCode("pub fn main() void {\n");
-
+        try stat.addImport(@constCast("const std = @import(\"std\");"));
         return stat;
     }
 
     fn deinit(self: *Status) void {
         self.imports.deinit();
+        self.globals.deinit();
         self.code.deinit();
     }
 
     /// Appends an import, if it doesn't already exists. 
-    fn addImportCode(self: *Status, import_code: []const u8) !void {
+    fn addImport(self: *Status, import_code: []const u8) !void {
         if (array.contains([]const u8, self.imports.items, import_code) == null) {
             try self.imports.append(import_code);
+        }
+    }
+
+    fn addGlobal(self: *Status, global_var: []const u8) !void {
+        if (array.contains([]const u8, self.globals.items, global_var) == null) {
+            try self.globals.append(global_var);
         }
     }
 
@@ -45,13 +52,22 @@ const Status = struct {
         const file = try generateOutFiles(manager.global_allocator, pack_path);
         defer file.close();
 
-        for (self.*.imports.items) |import| {
+        for (self.imports.items) |import| {
             _ = try file.write(import);
             _ = try file.write("\n");
         }
+    
         _ = try file.write("\n\n\n");
-        _ = try file.write(self.*.code.items);
-        _ = try file.write("while (true) {}\n}");
+        _ = try file.write("pub fn main() !void {\n");
+    
+        for (self.globals.items) |global| {
+            _ = try file.write(global);
+            _ = try file.write("\n");
+        }
+        
+        _ = try file.write("\n");
+        _ = try file.write(self.code.items);
+        _ = try file.write("\nstd.time.sleep(5 * std.time.ns_per_s);\n}");
     }
 };
 
@@ -89,12 +105,11 @@ const Commands = enum {
 };
 
 pub fn evalCmd(command: []const u8) !void {
-    std.debug.print("\n_i_\n{s}\n_i_\n", .{command}); //TEMP
     const primary_cmd = getPrimaryCmd(command) orelse return;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
         .say => try say(command[primary_cmd.len + 1..]),
-        else => std.debug.print("\n_E_\n{s}\n_E_\n", .{primary_cmd}) //TEMP}
+        else => {}
     }
 }
 
@@ -113,11 +128,10 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
 
 
 
-fn say(msg: []const u8) !void {
-    std.debug.print("\n_s_\n{s}\n_s_\n", .{msg}); //TEMP
-    try status.addImportCode(@constCast("const stdout = std.io.getStdOut();"));
+fn say(msg: []const u8) !void {    
+    try status.addGlobal(@constCast("const stdout = std.io.getStdOut();"));
 
-    const code_parts = [3][]const u8{"stdout.write(\"", msg, "\");"};
+    const code_parts = [3][]const u8{"_ = try stdout.write(\"", msg, "\");"};
     const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
     defer manager.global_allocator.free(code);
     try status.addCode(code);
