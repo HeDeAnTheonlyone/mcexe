@@ -11,12 +11,14 @@ const Status = struct {
     imports: std.ArrayList([]const u8),
     globals: std.ArrayList([]const u8),
     code: std.ArrayList(u8),
+    curr_cmd_next_arg_index: usize,
 
     fn init(allocator: std.mem.Allocator) !Status {
         var stat = Status {
             .imports = std.ArrayList([]const u8).init(allocator),
             .globals = std.ArrayList([]const u8).init(allocator),
-            .code = std.ArrayList(u8).init(allocator)
+            .code = std.ArrayList(u8).init(allocator),
+            .curr_cmd_next_arg_index = 0,
         };
 
         try stat.addImport(@constCast("const std = @import(\"std\");"));
@@ -67,10 +69,13 @@ const Status = struct {
         
         _ = try file.write("\n");
         _ = try file.write(self.code.items);
-        _ = try file.write("\nstd.time.sleep(5 * std.time.ns_per_s);\n}");
+        _ = try file.write("\nstd.time.sleep(5 * std.time.ns_per_s);\n");
+        _ = try file.write("std.debug.print(\"Console closes in 5 seconds.\", .{});\n");
+        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n}");
     }
 };
 
+/// Generates the interpreted .zig file.
 fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs.File {
     var pack_dir = try std.fs.openDirAbsolute(pack_path, .{});
     defer pack_dir.close();
@@ -102,13 +107,16 @@ pub fn deinitInterpreterStatus() void {
 const Commands = enum {
     none,
     say,
+    give,
 };
 
 pub fn evalCmd(command: []const u8) !void {
+    status.curr_cmd_next_arg_index = 0;
     const primary_cmd = getPrimaryCmd(command) orelse return;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
         .say => try say(command[primary_cmd.len + 1..]),
+        // .give => try give(command[primary_cmd.len + 1..]),
         else => {}
     }
 }
@@ -123,16 +131,40 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
     if (std.mem.startsWith(u8, command, "\n"))
         return null;
     
-    return if (std.mem.indexOfScalar(u8, command, ' ')) |index| command[0..index] else null;
+    return getNextArgument(command, 0);
+}
+
+fn getNextArgument(command: []const u8, start: usize) ?[]const u8 {
+    var end = start;
+    while (command[end] != ' ') : (end += 1) {}
+
+    status.curr_cmd_next_arg_index = end + 1;
+    return command[start..end];
 }
 
 
 
-fn say(msg: []const u8) !void {    
+fn say(context: []const u8) !void {    
     try status.addGlobal(@constCast("const stdout = std.io.getStdOut();"));
 
-    const code_parts = [3][]const u8{"_ = try stdout.write(\"", msg, "\");"};
+    const code_parts = [3][]const u8{"_ = try stdout.write(\"", context, "\");"};
     const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
     defer manager.global_allocator.free(code);
     try status.addCode(code);
-}  
+}
+
+// fn tellraw(msg: []const u8) !void {
+//     std.json.Parsed(comptime T: type)
+
+//     std.json.parseFromSlice(comptime T: type, allocator: Allocator, s: []const u8, options: ParseOptions)
+
+    
+// }
+
+fn give(context: []const u8) !void {
+    
+}
+
+// fn clear(context: ?[]const u8) !void {
+
+// }
