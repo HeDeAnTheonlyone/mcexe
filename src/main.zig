@@ -9,7 +9,7 @@ const interpreter = @import("interpreter.zig");
 // TODO After project testing, remove mcexe.exe from environment variables
 
 pub fn main() !void {
-    initAll();
+    try initAll();
     defer deinitAll();
 
     const allocator = manager.global_allocator;
@@ -21,19 +21,19 @@ pub fn main() !void {
     defer manager.deinitSettings();
     const settings = manager.settings;
 
-    const load_functions = fCollecter.getFuncFilesList(allocator, settings, .load) catch |err| {
+    const load_functions = fCollecter.getFuncFilesList(allocator, settings.path, .load) catch |err| {
         if (err == std.json.Error.SyntaxError){
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
         }
         else {
-            std.debug.print("{any}", .{err});
+            std.debug.print("{any}", .{err}); 
         }
         return;
     };
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        var function = try fCollecter.Function.init(allocator, settings, func);
+        var function = try fCollecter.Function.init(allocator, settings.path, func);
         defer function.deinit();
 
         try interpreter.evalCmd(function.commands.first());
@@ -42,15 +42,17 @@ pub fn main() !void {
         }
     }
 
-    // TODO use this file to print out the code
-    try generateOutFiles(allocator, settings.path);
+    try interpreter.status.flushCode(settings.path);
+
+    // TODO add dynamic compilation of the generated Zig code.
+    try compileInterpretation(allocator, settings.path);
 }
 
 
 
-fn initAll() void {
+fn initAll() !void {
     manager.initGlobalAllocactor(); // Allocator hast to be initialized before everything else!
-    interpreter.initInterpreterStatus(manager.global_allocator);
+    try interpreter.initInterpreterStatus(manager.global_allocator);
 }
 
 fn deinitAll() void {
@@ -60,22 +62,54 @@ fn deinitAll() void {
 
 
 
-fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !void {
-    var pack_dir = try std.fs.openDirAbsolute(pack_path, .{});
-    defer pack_dir.close();
-    try std.fs.Dir.makePath(pack_dir, "out");
-
+fn compileInterpretation(allocator: std.mem.Allocator, pack_path: []const u8) !void {
     var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
-    const out_path_parts = [4][]const u8{
+    const namespace = path_iter.first();
+    
+    const exe_dir_path = try std.fs.selfExeDirPathAlloc(allocator);
+    const exe_path_parts = [2][]const u8{
+        exe_dir_path,
+        "/zig.exe"
+    };
+    const exe_path = try std.mem.concat(allocator, u8, &exe_path_parts);
+    defer allocator.free(exe_path);
+    allocator.free(exe_dir_path);
+    std.mem.replaceScalar(u8, exe_path, '\\', '/');
+
+    const source_path_parts = [4][]const u8{
         pack_path,
         "/out/",
-        path_iter.first(),
+        namespace,
         ".zig"
     };
-    const out_file_path = try std.mem.concat(allocator, u8, &out_path_parts);
-    defer allocator.free(out_file_path);
-    std.debug.print("\nFile Path: {s}\n", .{out_file_path}); // TEMP
+    const source_path = try std.mem.concat(allocator, u8, &source_path_parts);
+    defer allocator.free(source_path);
 
-    const out_file = try std.fs.createFileAbsolute(out_file_path, .{ .read = true });
-    defer out_file.close();
+    const out_path_parts = [_][]const u8{
+        "-femit-bin=",
+        pack_path,
+        "/out/",
+        namespace,
+        ".exe"
+    };
+    const out_path = try std.mem.concat(allocator, u8, &out_path_parts);
+    defer allocator.free(out_path);
+
+    // std.debug.print("\n{s}\n{s}\n{s}\n\n", .{
+    //     exe_path,
+    //     source_path,
+    //     out_path
+    // }); //TEMP
+
+    const comp_args = [4][]const u8{
+        exe_path,
+        "build-exe",
+        source_path,
+        out_path
+    };
+
+    var compile = std.process.Child.init(&comp_args, allocator);
+    const result = try std.process.Child.spawnAndWait(&compile);
+
+    std.debug.print("{any}", .{result});
 }
