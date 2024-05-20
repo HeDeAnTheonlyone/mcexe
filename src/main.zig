@@ -1,12 +1,10 @@
 
 const std = @import("std");
 const manager = @import("manager.zig");
-const fCollecter = @import("file_collecter.zig");
+const f_collector = @import("file_collector.zig");
 const interpreter = @import("interpreter.zig");
 
 
-
-// TODO After project testing, remove mcexe.exe from environment variables
 
 pub fn main() !void {
     try initAll();
@@ -17,11 +15,13 @@ pub fn main() !void {
     const arguments: [][:0]u8 = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, arguments);
 
+    // TODO add '-help' argument handling
+
     try manager.initSettings(arguments, allocator);
     defer manager.deinitSettings();
     const settings = manager.settings;
 
-    const load_functions = fCollecter.getFuncFilesList(allocator, settings.path, .load) catch |err| {
+    const load_functions = f_collector.getFuncFilesList(allocator, settings.path, .load) catch |err| {
         if (err == std.json.Error.SyntaxError){
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
         }
@@ -33,7 +33,7 @@ pub fn main() !void {
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        var function = try fCollecter.Function.init(allocator, settings.path, func);
+        var function = try f_collector.Function.init(allocator, settings.path, func);
         defer function.deinit();
 
         try interpreter.evalCmd(function.commands.first());
@@ -44,8 +44,9 @@ pub fn main() !void {
 
     try interpreter.status.flushCode(settings.path);
 
-    // TODO add dynamic compilation of the generated Zig code.
-    try compileInterpretation(allocator, settings.path);
+    // TODO add available arguments to mcexe to modify the compilation process
+    // TODO auto generate a buld.zig file for more dynamic compilation
+    try compileInterpetedCode(allocator, settings.path);
 }
 
 
@@ -62,7 +63,7 @@ fn deinitAll() void {
 
 
 
-fn compileInterpretation(allocator: std.mem.Allocator, pack_path: []const u8) !void {
+fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !void {
     var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
     const namespace = path_iter.first();
     
@@ -109,7 +110,7 @@ fn compileInterpretation(allocator: std.mem.Allocator, pack_path: []const u8) !v
     };
 
     var compile = std.process.Child.init(&comp_args, allocator);
-    const result = try std.process.Child.spawnAndWait(&compile);
+    _ = try std.process.Child.spawnAndWait(&compile);
 
-    std.debug.print("{any}", .{result});
+    // std.debug.print("{any}", .{result}); //TEMP
 }

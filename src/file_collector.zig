@@ -46,7 +46,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
 
 
 pub const Function = struct {
-    allocator: std.mem.Allocator,
+    raw_commands: ArrayList(u8),
     commands: std.mem.SplitIterator(u8, .scalar),
 
     /// Returns a struct that holds an allocator and a iterable list of commands
@@ -69,15 +69,15 @@ pub const Function = struct {
         const contents = try file.reader().readAllAlloc(allocator, 65536);
         const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
         allocator.free(contents);
-        const cmds = std.mem.splitScalar(u8, sanatized_contents, '\n');
+        const cmds = std.mem.splitScalar(u8, sanatized_contents.items, '\n');
 
         return Function{
-            .allocator = allocator,
+            .raw_commands = sanatized_contents,
             .commands = cmds
         };
     }
 
     pub fn deinit(self: *const Function) void {
-        self.allocator.free(self.*.commands.buffer);
+        self.raw_commands.deinit();
     }
 };

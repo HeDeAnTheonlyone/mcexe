@@ -19,14 +19,13 @@ pub fn deinitGlobalAllocator() void {
 
 pub var settings: Settings = undefined;
 
+/// `allocator`: Holds the allocator for the structs fields.
+/// `path`: Path to the datapack. Leave blank if executed in the datapacks root directory.
 pub const Settings = struct {
     allocator: std.mem.Allocator,
     path: []const u8,
 
-    /// Initialises a Settings struct.
-    /// `allocator`: Holds the allocator for the structs fields.
-    /// `path`: Path to the datapack. Leave blank if executed in the datapacks root directory.
-    fn init(args_arr: [][:0]u8, allocator: std.mem.Allocator) !Settings {        
+    fn init(args_arr: [][]u8, allocator: std.mem.Allocator) !Settings {        
         return  Settings{
             .allocator = allocator,
             .path = path_blk: {
@@ -54,7 +53,7 @@ pub const Settings = struct {
     }
 };
 
-pub fn initSettings(args_arr: [][:0]u8, allocator: std.mem.Allocator) !void {
+pub fn initSettings(args_arr: [][]u8, allocator: std.mem.Allocator) !void {
     settings = try Settings.init(args_arr, allocator);
 }
 

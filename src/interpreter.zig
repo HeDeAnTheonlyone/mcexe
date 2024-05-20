@@ -18,7 +18,6 @@ const Status = struct {
             .imports = std.ArrayList([]const u8).init(allocator),
             .globals = std.ArrayList([]const u8).init(allocator),
             .code = std.ArrayList(u8).init(allocator),
-            .curr_cmd_next_arg_index = 0,
         };
 
         try stat.addImport(@constCast("const std = @import(\"std\");"));
@@ -115,8 +114,8 @@ pub fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
-        .say => try say(command[primary_cmd.len + 1..]),
-        // .give => try give(command[primary_cmd.len + 1..]),
+        .say => try say(command[status.curr_cmd_next_arg_index..]),
+        .give => try give(command[status.curr_cmd_next_arg_index..]),
         else => {}
     }
 }
@@ -131,14 +130,13 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
     if (std.mem.startsWith(u8, command, "\n"))
         return null;
     
-    return getNextArgument(command, 0);
+    return getNextArgument(command, 0, ' ');
 }
 
-fn getNextArgument(command: []const u8, start: usize) ?[]const u8 {
-    var end = start;
-    while (command[end] != ' ') : (end += 1) {}
-
-    status.curr_cmd_next_arg_index = end + 1;
+/// Returns the next argument in the command from the given starting index or null if there is no next argument. !!!DON'T USE `std.mem.splitScalar()` THIS FUNCTION IS NEEDED FOR LATER DEVELOPMENT!!!
+fn getNextArgument(command: []const u8, start: usize, delimiter: u8) ?[]const u8 {
+    if (start >= command.len) return null;
+    const end = std.mem.indexOfScalarPos(u8, command, start, delimiter) orelse command.len;
     return command[start..end];
 }
 
@@ -147,22 +145,58 @@ fn getNextArgument(command: []const u8, start: usize) ?[]const u8 {
 fn say(context: []const u8) !void {    
     try status.addGlobal(@constCast("const stdout = std.io.getStdOut();"));
 
-    const code_parts = [3][]const u8{"_ = try stdout.write(\"", context, "\");"};
+    const code_parts = [3][]const u8{
+        "_ = try stdout.write(\"",
+        context,
+        "\");"
+    };
     const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
     defer manager.global_allocator.free(code);
     try status.addCode(code);
 }
 
+
+
 // fn tellraw(msg: []const u8) !void {
-//     std.json.Parsed(comptime T: type)
-
-//     std.json.parseFromSlice(comptime T: type, allocator: Allocator, s: []const u8, options: ParseOptions)
-
-    
 // }
 
+
+
+const FileInfo = struct {
+    path: []const u8,
+    name: []const u8,
+    extension: []const u8
+};
+
+fn itemToExtension(item: []const u8) []const u8 {
+    return if (std.mem.eql(u8, item, "paper")) ".txt"
+        else ".txt";
+}
+
 fn give(context: []const u8) !void {
-    
+    const selector = getNextArgument(context, 0, ' ').?;
+    const item = getNextArgument(context, selector.len + 1, '[').?;
+    const item_component = getNextArgument(context, selector.len + item.len + 2, ']').?;
+
+    //TODO currently only supports selectors that are names and plain @s
+    const file_info = FileInfo {
+        .path = blk: {
+            if (std.mem.startsWith(u8, selector, "@")) {
+                break :blk try std.fs.cwd().realpathAlloc(manager.global_allocator, "");
+            }
+            else {
+                break :blk selector;
+            }
+        },
+        .extension = if (std.mem.startsWith(u8, item, "minecraft:")) itemToExtension(item[10..]) else itemToExtension(item),
+        .name = blk: {
+            const index = std.mem.indexOf(u8, item_component, "item_name=").? + 10;
+            const f_name = item_component[index..];
+            break :blk std.mem.trim(u8, f_name, "\"");
+        }
+    };
+
+    _ = file_info;
 }
 
 // fn clear(context: ?[]const u8) !void {
