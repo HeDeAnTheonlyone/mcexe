@@ -46,7 +46,8 @@ pub fn main() !void {
 
     // TODO add available arguments to mcexe to modify the compilation process
     // TODO auto generate a buld.zig file for more dynamic compilation
-    try compileInterpetedCode(allocator, settings.path);
+    // try compileInterpetedCode(allocator, settings.path);
+    try compileInterpetedCode(allocator);
 }
 
 
@@ -63,10 +64,7 @@ fn deinitAll() void {
 
 
 
-fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !void {
-    var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
-    const namespace = path_iter.first();
-    
+fn compileInterpetedCode(allocator: std.mem.Allocator) !void {
     const exe_dir_path = try std.fs.selfExeDirPathAlloc(allocator);
     const exe_path_parts = [2][]const u8{
         exe_dir_path,
@@ -77,36 +75,16 @@ fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !v
     allocator.free(exe_dir_path);
     std.mem.replaceScalar(u8, exe_path, '\\', '/');
 
-    const source_path_parts = [4][]const u8{
-        pack_path,
-        "/out/",
-        namespace,
-        ".zig"
-    };
-    const source_path = try std.mem.concat(allocator, u8, &source_path_parts);
-    defer allocator.free(source_path);
-
-    const out_path_parts = [_][]const u8{
-        "-femit-bin=",
-        pack_path,
-        "/out/",
-        namespace,
-        ".exe"
-    };
-    const out_path = try std.mem.concat(allocator, u8, &out_path_parts);
-    defer allocator.free(out_path);
 
     // std.debug.print("\n{s}\n{s}\n{s}\n\n", .{
     //     exe_path,
     //     source_path,
     //     out_path
     // }); //TEMP
-
-    const comp_args = [4][]const u8{
+    
+    const comp_args = [2][]const u8{
         exe_path,
-        "build-exe",
-        source_path,
-        out_path
+        "build"
     };
 
     var compile = std.process.Child.init(&comp_args, allocator);
@@ -114,3 +92,57 @@ fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !v
 
     // std.debug.print("{any}", .{result}); //TEMP
 }
+
+
+
+// fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !void {
+//     var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
+//     const namespace = path_iter.first();
+    
+//     const exe_dir_path = try std.fs.selfExeDirPathAlloc(allocator);
+//     const exe_path_parts = [2][]const u8{
+//         exe_dir_path,
+//         "/zig.exe"
+//     };
+//     const exe_path = try std.mem.concat(allocator, u8, &exe_path_parts);
+//     defer allocator.free(exe_path);
+//     allocator.free(exe_dir_path);
+//     std.mem.replaceScalar(u8, exe_path, '\\', '/');
+
+//     const source_path_parts = [4][]const u8{
+//         pack_path,
+//         "/out/",
+//         namespace,
+//         ".zig"
+//     };
+//     const source_path = try std.mem.concat(allocator, u8, &source_path_parts);
+//     defer allocator.free(source_path);
+
+//     const out_path_parts = [_][]const u8{
+//         "-femit-bin=",
+//         pack_path,
+//         "/out/",
+//         namespace,
+//         ".exe"
+//     };
+//     const out_path = try std.mem.concat(allocator, u8, &out_path_parts);
+//     defer allocator.free(out_path);
+
+//     // std.debug.print("\n{s}\n{s}\n{s}\n\n", .{
+//     //     exe_path,
+//     //     source_path,
+//     //     out_path
+//     // }); //TEMP
+
+//     const comp_args = [4][]const u8{
+//         exe_path,
+//         "build-exe",
+//         source_path,
+//         out_path
+//     };
+
+//     var compile = std.process.Child.init(&comp_args, allocator);
+//     _ = try std.process.Child.spawnAndWait(&compile);
+
+//     // std.debug.print("{any}", .{result}); //TEMP
+// }

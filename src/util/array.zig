@@ -19,7 +19,11 @@ pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []T,
     
     var last_index: usize = 0;
     for (buffer, 0..) |element, index| {
-        if (element == scalar){
+        if (index == buffer.len - 1) {
+            try clean_buffer.appendSlice(buffer[last_index..index + 1]);
+            last_index = index + 1;
+        }
+        else if (element == scalar){
             try clean_buffer.appendSlice(buffer[last_index..index]);
             last_index = index + 1;
         }
