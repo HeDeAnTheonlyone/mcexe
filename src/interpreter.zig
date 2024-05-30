@@ -196,7 +196,7 @@ pub fn evalCmd(command: []const u8) !void {
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
         .say => try say(command[primary_cmd.len + 1..]),
         .give => try give(command[primary_cmd.len + 1..]),
-        .clear => try give(command[primary_cmd.len + 1..]),
+        .clear => try clear(command[primary_cmd.len + 1..]),
         else => {}
     }
 }
@@ -244,7 +244,7 @@ fn say(context: []const u8) !void {
 
 
 const FileInfo = struct {
-    path: ?[]const u8,
+    path: []const u8,
     name: []const u8,
     extension: []const u8,
 
@@ -255,26 +255,19 @@ const FileInfo = struct {
 
         //TODO currently only supports selectors that are names and plain @s
         return FileInfo {
-            .path = blk: {
-                if (std.mem.startsWith(u8, selector, "@")) {
-                    break :blk null;
-                }
-                else {
-                    break :blk selector;
-                }
-            },
+            .path = if (std.mem.startsWith(u8, selector, "@")) "" else selector,
             .extension = if (std.mem.startsWith(u8, item, "minecraft:")) itemToExtension(item[10..]) else itemToExtension(item),
             .name = blk: {
                 const index = std.mem.indexOf(u8, item_component, "item_name=").? + 10;
-                const f_name = item_component[index..];
-                break :blk std.mem.trim(u8, f_name, "\"");
+                break :blk std.mem.trim(u8, item_component[index..], "\"");
             }
         };
     }
 };
 
 fn itemToExtension(item: []const u8) []const u8 {
-    return if (std.mem.eql(u8, item, "paper")) ".txt"
+    return if (std.mem.eql(u8, item, "*")) ""
+        else if (std.mem.eql(u8, item, "paper")) ".txt"
         else ".txt";
 }
 
@@ -285,7 +278,7 @@ fn give(context: []const u8) !void {
         const parts = [7][]const u8{
             "try interpret.mkFile(",
             "\"",
-            if (file_info.path == null) "" else file_info.path.?,
+            file_info.path,
             "\",\"",
             file_info.name,
             file_info.extension,
@@ -296,45 +289,26 @@ fn give(context: []const u8) !void {
     };
     defer manager.global_allocator.free(code);
     try status.addCode(code);
-
-    // if (file_info.path != null) {
-    //     const code_parts = [7][]const u8{
-    //         "const file = try std.fs.createFileAbsolute(\"",
-    //         file_info.path.?,
-    //         "/",
-    //         file_info.name,
-    //         file_info.extension,
-    //         "\", .{});\n",
-    //         "file.close();"
-    //     };
-    //     const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
-    //     std.mem.replaceScalar(u8, code, '\\', '/');
-    //     defer manager.global_allocator.free(code);
-    //     try status.addCode(code);
-    // }
-    // else {
-    //     const code_parts = [13][]const u8{
-    //         "const var_file_path = try std.fs.cwd().realpathAlloc(allocator, \"\");\n",
-    //         "std.mem.replaceScalar(u8, var_file_path, '\\\\', '/');\n",
-    //         "defer allocator.free(var_file_path);\n",
-    //         "const var_parts = [_][]const u8{",
-    //         "var_file_path,",
-    //         "\"/\",\"",
-    //         file_info.name,
-    //         file_info.extension
-    //         ,"\"};\n",
-    //         "const path = try std.mem.concat(allocator, u8, &var_parts);\n",
-    //         "defer allocator.free(path);\n",
-    //         "const file = try std.fs.createFileAbsolute(path, .{});\n",
-    //         "file.close();"
-    //     };
-    //     const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
-    //     defer manager.global_allocator.free(code);
-    //     try status.addCode(code);
-    // }
 }
 
-//TODO
-// fn clear(context: ?[]const u8) !void {
+fn clear(context: []const u8) !void {
+    const file_info = FileInfo.parse(context);
 
-// }
+    const code = blk: {
+        const parts = [9][]const u8{
+            "try interpret.rmFile(",
+            "\"",
+            file_info.path,
+            "\",\"",
+            file_info.name,
+            file_info.extension,
+            "\",",
+            if (std.mem.eql(u8, file_info.extension, "")) "true" else "false",
+            ");"
+        };
+
+        break :blk try std.mem.concat(manager.global_allocator, u8, &parts);
+    };
+    defer manager.global_allocator.free(code);
+    try status.addCode(code);
+}
