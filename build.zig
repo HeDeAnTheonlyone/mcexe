@@ -6,14 +6,14 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{
-        .name = "interpret",
-        .root_source_file = b.path("interpret_lib/root.zig"),
-        .target = target,
-        .optimize = optimize
-    });
+    // const lib = b.addStaticLibrary(.{
+    //     .name = "interpret",
+    //     .root_source_file = b.path("interpret_lib/root.zig"),
+    //     .target = target,
+    //     .optimize = optimize
+    // });
 
-    b.installArtifact(lib);
+    // b.installArtifact(lib);
 
     const exe = b.addExecutable(.{
         .name = "mcexe",
@@ -23,5 +23,4 @@ pub fn build(b: *std.Build) void {
     });
 
     b.installArtifact(exe);
-
 }

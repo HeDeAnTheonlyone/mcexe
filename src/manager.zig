@@ -47,7 +47,6 @@ pub const Settings = struct {
         };
     }
 
-
     fn deinit(self: *Settings) void {
         self.allocator.free(self.*.path);
     }
