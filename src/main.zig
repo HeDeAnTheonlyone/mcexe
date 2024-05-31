@@ -21,6 +21,8 @@ pub fn main() !void {
     defer manager.deinitSettings();
     const settings = manager.settings;
 
+    std.debug.print("{s}", .{settings.path}); //TEMP
+
     const load_functions = f_collector.getFuncFilesList(allocator, settings.path, .load) catch |err| {
         if (err == std.json.Error.SyntaxError){
             std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
@@ -33,7 +35,7 @@ pub fn main() !void {
     defer load_functions.deinit();
 
     for (load_functions.value.values) |func| {
-        var function = try f_collector.Function.init(allocator, settings.path, func);
+        var function = try f_collector.FunctionFile.init(allocator, settings.path, func);
         defer function.deinit();
 
         try interpreter.evalCmd(function.commands.first());

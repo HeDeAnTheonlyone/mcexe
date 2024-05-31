@@ -185,6 +185,7 @@ pub fn deinitInterpreterStatus() void {
 
 const Commands = enum {
     none,
+    function,
     say,
     give,
     clear,
@@ -194,6 +195,7 @@ pub fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
+        .function => try say(command[primary_cmd.len + 1..]),
         .say => try say(command[primary_cmd.len + 1..]),
         .give => try give(command[primary_cmd.len + 1..]),
         .clear => try clear(command[primary_cmd.len + 1..]),
@@ -202,24 +204,40 @@ pub fn evalCmd(command: []const u8) !void {
 }
 
 fn getPrimaryCmd(command: []const u8) ?[]const u8 {
-    if (std.mem.startsWith(u8, command, "#"))
+    const first_char = std.mem.indexOfNone(u8, command, " ") orelse return null;
+
+    if (std.mem.startsWith(u8, command[first_char..], "#"))
         return null;
     
-    if (std.mem.startsWith(u8, command, " "))
+    if (std.mem.startsWith(u8, command[first_char..], "\n"))
         return null;
     
-    if (std.mem.startsWith(u8, command, "\n"))
-        return null;
-    
-    return getNextArgument(command, 0, ' ');
+    return getNextArgument(command[first_char..], @constCast(&@as(usize, 0)), ' ');
 }
 
-/// Returns the next argument in the command from the given starting index or null if there is no next argument. !!!DON'T USE `std.mem.splitScalar()` THIS FUNCTION IS NEEDED FOR LATER DEVELOPMENT!!!
-fn getNextArgument(command: []const u8, start: usize, delimiter: u8) ?[]const u8 {
+/// Returns the next argument in the command from the given starting index or null if there is no next argument. It also increases the given index value to the next arguments start index. !!!DON'T USE `std.mem.splitScalar()` THIS FUNCTION IS NEEDED FOR LATER DEVELOPMENT!!!
+fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]const u8 {
+    const start: usize = start_index.*;
+
     if (start >= command.len) return null;
     const end = std.mem.indexOfScalarPos(u8, command, start, delimiter) orelse command.len;
+
+    start_index.* = end + 1;
     return command[start..end];
 }
+
+
+
+const Function = struct {
+    real_name: []const u8,
+    name: []const u8,
+    parameter: []const u8,
+    returns: bool,
+};
+
+// fn function(context: []const u8) !void {
+//     const func_name = 
+// }
 
 
 
@@ -249,9 +267,11 @@ const FileInfo = struct {
     extension: []const u8,
 
     fn parse(context: []const u8) FileInfo {
-        const selector = getNextArgument(context, 0, ' ').?;
-        const item = getNextArgument(context, selector.len + 1, '[').?;
-        const item_component = getNextArgument(context, selector.len + item.len + 2, ']').?;
+        var context_index: usize = 0;
+
+        const selector = getNextArgument(context, &context_index, ' ').?;
+        const item = getNextArgument(context, &context_index, '[').?;
+        const item_component = getNextArgument(context, &context_index, ']').?;
 
         //TODO currently only supports selectors that are names and plain @s
         return FileInfo {

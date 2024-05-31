@@ -19,12 +19,6 @@ Because it uses Zig as intermediate language, it will have (nearly) all the capa
 
 
 
-## Currently Supported
-- Commands:
-  - say
-
-
-
 ## Will be unsupported in version 1.0.0
 - multiline commands
 - everything else than function files (advancements, predicates, loot tables, etc.)

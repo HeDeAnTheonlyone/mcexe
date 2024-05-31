@@ -8,11 +8,11 @@ const json = std.json;
 
 
 /// Enum of vanilla builtin function tags with special functionality 
-const VanillaFunctionLists = enum {
+const VanillaFunctionFileLists = enum {
     tick,
     load,
     
-    fn getStrName(self: VanillaFunctionLists) []const u8 {
+    fn getStrName(self: VanillaFunctionFileLists) []const u8 {
         return switch (self) {
             .load => "load",
             .tick => "tick"
@@ -20,11 +20,11 @@ const VanillaFunctionLists = enum {
     }
 };
 
-const FunctionList = struct {
+const FunctionFileList = struct {
     values: [][]u8
 };
 
-pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: VanillaFunctionLists) !std.json.Parsed(FunctionList) {
+pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: VanillaFunctionFileLists) !std.json.Parsed(FunctionFileList) {
     const path_parts = [4][]const u8{
         pack_path,
         "/data/minecraft/tags/functions/",
@@ -40,17 +40,17 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
     const buffer = try file.reader().readAllAlloc(allocator, 1024);
     defer allocator.free(buffer);
 
-    return try std.json.parseFromSlice(FunctionList, allocator, buffer, .{});
+    return try std.json.parseFromSlice(FunctionFileList, allocator, buffer, .{});
 }
 
 
-
-pub const Function = struct {
+/// The contents of the read function
+pub const FunctionFile = struct {
     raw_commands: ArrayList(u8),
     commands: std.mem.SplitIterator(u8, .scalar),
 
     /// Returns a struct that holds an allocator and a iterable list of commands
-    pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , function_path: []const u8) !Function {
+    pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , function_path: []const u8) !FunctionFile {
         var func_path = std.mem.splitScalar(u8, function_path, ':');
         const path_parts = [6][]const u8{
             pack_path,
@@ -71,13 +71,13 @@ pub const Function = struct {
         allocator.free(contents);
         const cmds = std.mem.splitScalar(u8, sanatized_contents.items, '\n');
 
-        return Function{
+        return FunctionFile{
             .raw_commands = sanatized_contents,
             .commands = cmds
         };
     }
 
-    pub fn deinit(self: *const Function) void {
+    pub fn deinit(self: *const FunctionFile) void {
         self.raw_commands.deinit();
     }
 };
