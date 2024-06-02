@@ -1,6 +1,7 @@
 
 const std = @import("std");
 const manager = @import("manager.zig");
+const f_collector = @import("util/file_collector.zig");
 const array = @import("util/array.zig");
 
 
@@ -86,8 +87,7 @@ const Status = struct {
         // other code
         _ = try file.write("\n");
         _ = try file.write(self.code.items);
-        _ = try file.write("\nstd.time.sleep(5 * std.time.ns_per_s);\n");
-        _ = try file.write("std.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
+        _ = try file.write("\nstd.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
         _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n}");
         //
     }
@@ -193,13 +193,16 @@ const Commands = enum {
 
 pub fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
+    const context_index = primary_cmd.len + 1;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
-        .function => try say(command[primary_cmd.len + 1..]),
-        .say => try say(command[primary_cmd.len + 1..]),
-        .give => try give(command[primary_cmd.len + 1..]),
-        .clear => try clear(command[primary_cmd.len + 1..]),
-        else => {}
+        .function => try say(command[context_index..]),
+        .say => try say(command[context_index..]),
+        .give => try give(command[context_index..]),
+        .clear => try clear(command[context_index..]),
+        else => {
+            std.debug.print("\nSkipped unknown command'{s}'", .{command});
+        }
     }
 }
 
@@ -212,7 +215,8 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
     if (std.mem.startsWith(u8, command[first_char..], "\n"))
         return null;
     
-    return getNextArgument(command[first_char..], @constCast(&@as(usize, 0)), ' ');
+    var i: usize = 0;
+    return getNextArgument(command[first_char..], &i, ' ');
 }
 
 /// Returns the next argument in the command from the given starting index or null if there is no next argument. It also increases the given index value to the next arguments start index. !!!DON'T USE `std.mem.splitScalar()` THIS FUNCTION IS NEEDED FOR LATER DEVELOPMENT!!!
@@ -229,14 +233,60 @@ fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]c
 
 
 const Function = struct {
-    real_name: []const u8,
     name: []const u8,
-    parameter: []const u8,
-    returns: bool,
+    parameter: ?[]const u8,
+    returns: bool = false,
+    content: []const u8,
+
+    fn init(allocator: std.mem.Allocator, context: []const u8) !Function {
+        var context_index: usize = 0;
+
+        const full_function_path = getNextArgument(context, &context_index, " ").?;
+
+        return Function {
+            .name = full_function_path,
+            .parameter = param_blk: {
+                const arg = getNextArgument(context, &context_index, " ") orelse break :param_blk null;
+                
+                if (std.mem.eql(u8, arg, "with")) {
+                    // TODO Implement nbt sources for parameters
+                    return error{NotYetImplemented};
+                }
+                else break :param_blk arg;
+            },
+            .content = contents_blk: {
+                const function_path = inner_contents_blk: {
+                    const separator_index = std.mem.indexOfScalar(u8, full_function_path, ':').?;
+                    const parts = [_][]const u8{
+                        "data/",
+                        full_function_path[0..separator_index],
+                        "function/",
+                        full_function_path[separator_index + 1..],
+                        ".mcfunction"
+                    };
+                    
+                    break :inner_contents_blk try std.mem.concat(allocator, u8, parts);
+                };
+                defer allocator.free(function_path);
+
+                const function = try f_collector.FunctionFile.init(allocator, manager.settings, function_path);
+                defer function.deinit();
+
+                // TODO to make this work, the eval command needs to a function name as parameter to write the command code to that function.
+                try evalCmd(function.commands.first());
+                while (function.commands.next()) |cmd| {
+                    try evalCmd(cmd);
+                }
+                
+                break :contents_blk null; //TMP
+            }
+        };
+    }
 };
 
 // fn function(context: []const u8) !void {
-//     const func_name = 
+//     const function = try Function.parse(context);
+
 // }
 
 

@@ -1,6 +1,6 @@
 
 const std = @import("std");
-const array = @import("util/array.zig");
+const array = @import("array.zig");
 
 const ArrayList = std.ArrayList;
 const json = std.json;
@@ -25,13 +25,16 @@ const FunctionFileList = struct {
 };
 
 pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: VanillaFunctionFileLists) !std.json.Parsed(FunctionFileList) {
-    const path_parts = [4][]const u8{
-        pack_path,
-        "/data/minecraft/tags/functions/",
-        func_list.getStrName(),
-        ".json"
+    const full_path = blk: {
+        const parts = [4][]const u8{
+            pack_path,
+            "/data/minecraft/tags/functions/",
+            func_list.getStrName(),
+            ".json"
+        };
+
+        break :blk try std.mem.concat(allocator, u8, &parts);
     };
-    const full_path = try std.mem.concat(allocator, u8, &path_parts);
     defer allocator.free(full_path);
 
     const file = try std.fs.openFileAbsolute(full_path, .{});
@@ -51,22 +54,25 @@ pub const FunctionFile = struct {
 
     /// Returns a struct that holds an allocator and a iterable list of commands
     pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , function_path: []const u8) !FunctionFile {
-        var func_path = std.mem.splitScalar(u8, function_path, ':');
-        const path_parts = [6][]const u8{
-            pack_path,
-            "/data/",
-            func_path.first(),
-            "/functions/",
-            func_path.next().?,
-            ".mcfunction"
+        const sperator_index = std.mem.indexOfScalar(u8, function_path, ':').?;
+        const full_path = blk: {
+            const parts = [6][]const u8{
+                pack_path,
+                "/data/",
+                function_path[0..sperator_index],
+                "/functions/",
+                function_path[sperator_index + 1..],
+                ".mcfunction"
+            };
+
+            break :blk try std.mem.concat(allocator, u8, &parts);
         };
-        const full_path = try std.mem.concat(allocator, u8, &path_parts);
         defer allocator.free(full_path);
 
         const file = try std.fs.openFileAbsolute(full_path, .{});
         defer file.close();
 
-        const contents = try file.reader().readAllAlloc(allocator, 65536);
+        const contents = try file.reader().readAllAlloc(allocator, 1024 * 64);
         const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
         allocator.free(contents);
         const cmds = std.mem.splitScalar(u8, sanatized_contents.items, '\n');
