@@ -48,23 +48,23 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
 
 
 /// The contents of the read function
-pub const FunctionFile = struct {
+pub const Function = struct {
+    name: []const u8,
     raw_commands: ArrayList(u8),
     commands: std.mem.SplitIterator(u8, .scalar),
 
-    /// Returns a struct that holds an allocator and a iterable list of commands
-    pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , function_path: []const u8) !FunctionFile {
-        const sperator_index = std.mem.indexOfScalar(u8, function_path, ':').?;
+    /// Returns a struct that holds a mcfunction.
+    pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , mc_function_path: []const u8) !Function {
         const full_path = blk: {
+            const sperator_index = std.mem.indexOfScalar(u8, mc_function_path, ':').?;
             const parts = [6][]const u8{
                 pack_path,
                 "/data/",
-                function_path[0..sperator_index],
+                mc_function_path[0..sperator_index],
                 "/functions/",
-                function_path[sperator_index + 1..],
+                mc_function_path[sperator_index + 1..],
                 ".mcfunction"
             };
-
             break :blk try std.mem.concat(allocator, u8, &parts);
         };
         defer allocator.free(full_path);
@@ -73,17 +73,25 @@ pub const FunctionFile = struct {
         defer file.close();
 
         const contents = try file.reader().readAllAlloc(allocator, 1024 * 64);
-        const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
+        var sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
         allocator.free(contents);
-        const cmds = std.mem.splitScalar(u8, sanatized_contents.items, '\n');
+        try sanatized_contents.insert(0, '\n'); // This line is to having to use ArrayList.first(). ArrayList.next() can be used directly.
 
-        return FunctionFile{
+        return Function{
+            .name = blk: {
+                const name = try allocator.alloc(u8, mc_function_path.len);
+                @memcpy(name, mc_function_path);
+                std.mem.replaceScalar(u8, name, ':', '_');
+                std.mem.replaceScalar(u8, name, '/', '_');
+                break :blk name;
+            },
             .raw_commands = sanatized_contents,
-            .commands = cmds
+            .commands = std.mem.splitScalar(u8, sanatized_contents.items, '\n')
         };
     }
 
-    pub fn deinit(self: *const FunctionFile) void {
+    pub fn deinit(self: *Function) void {
+        // name is later given to `interpreter.InterpretedFunction`, so it will be freed there.
         self.raw_commands.deinit();
     }
 };

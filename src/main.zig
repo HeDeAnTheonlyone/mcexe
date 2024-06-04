@@ -21,28 +21,22 @@ pub fn main() !void {
     defer manager.deinitSettings();
     const settings = manager.settings;
 
-    const load_functions = f_collector.getFuncFilesList(allocator, settings.path, .load) catch |err| {
-        if (err == std.json.Error.SyntaxError) {
-            std.debug.print("\nSyntax error in '{s}/data/minecraft/tags/function/load.json'", .{settings.path});
-        }
-        else {
-            std.debug.print("\n{any}", .{err}); 
-        }
-        return err;
-    };
+    const load_functions = try f_collector.getFuncFilesList(allocator, settings.path, .load);
     defer load_functions.deinit();
 
-    for (load_functions.value.values) |func_file| {
-        var function = try f_collector.FunctionFile.init(allocator, settings.path, func_file);
+    var load_function_names = std.ArrayList([]const u8).init(allocator);
+    defer load_function_names.deinit();
+
+    for (load_functions.value.values) |func_path| {
+        var function = try f_collector.Function.init(allocator, settings.path, func_path);
         defer function.deinit();
 
-        try interpreter.evalCmd(function.commands.first());
-        while (function.commands.next()) |cmd| {
-            try interpreter.evalCmd(cmd);
-        }
+        try load_function_names.append(function.name);
+
+        try interpreter.evalFunction(function);
     }
 
-    try interpreter.status.flushCode(settings.path);
+    try interpreter.status.flushCode(settings.path, load_function_names);
 
     try compileInterpetedCode(allocator, settings.path);
 }

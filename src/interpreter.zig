@@ -6,34 +6,60 @@ const array = @import("util/array.zig");
 
 
 
-pub var status: Status = undefined; 
+const ArrayList = std.ArrayList;
+
+
+
+var status: Status = undefined;
 
 const Status = struct {
+    allocator: std.mem.Allocator,
     imports: std.ArrayList([]const u8),
-    globals: std.ArrayList([]const u8),
-    code: std.ArrayList(u8),
+    function_stack: std.ArrayList([]const u8),
+    function_map: std.StringHashMap(InterpretedFunction),
+    current_function: ?InterpretedFunction,
     var_count: usize = 0,
 
     fn init(allocator: std.mem.Allocator) !Status {
-        const stat = Status {
+        return Status {
+            .allocator = allocator,
             .imports = std.ArrayList([]const u8).init(allocator),
-            .globals = std.ArrayList([]const u8).init(allocator),
-            .code = std.ArrayList(u8).init(allocator),
+            .function_stack = std.ArrayList([]const u8).init(allocator),
+            .function_map = std.StringHashMap(InterpretedFunction).init(allocator),
+            .current_function = null
         };
-
-        return stat;
     }
 
     fn deinit(self: *Status) void {
         self.imports.deinit();
-        self.globals.deinit();
-        self.code.deinit();
+        self.function_stack.deinit();
+        self.function_map.deinit();
+    }
+
+    /// Creates a new Function entry if it doesn't already exist, puts it on top of the functions stack and sets it as current function.
+    fn createNewFunction(self: *Status, name: []const u8) !void {        
+        if (self.function_map.contains(name)) return;
+
+        try self.function_stack.append(name);
+        try self.function_map.put(name, InterpretedFunction.init(self.allocator, name));
+
+        status.updateCurrentFunction();
+    }
+
+    fn finishCurrentFunction(self: *Status) void {
+        _ = self.function_stack.pop();
+
+        status.updateCurrentFunction();
+    }
+
+    fn updateCurrentFunction(self: *Status) void {
+        self.current_function = self.function_map.get(self.function_stack.getLast()).?;
     }
 
     /// Returns a new variable name to use in the interpreted code. It starts with 1 and counts up for each new variable. The returned name is `_<count>`.
-    fn createNextVariableName(self: *Status, allocator: std.mem.Allocator) ![]const u8 {
+    fn createNextVariableName(self: *Status) ![]const u8 {
         self.var_count += 1;
-        return try std.fmt.allocPrint(allocator, "_{d}", .{self.var_count});
+        return try std.fmt.allocPrint(self.allocator, "_{d}", .{self.var_count});
     }
 
     /// Appends an import, if it doesn't already exists. Imports are written to the file first.
@@ -43,25 +69,12 @@ const Status = struct {
         }
     }
 
-    /// Appends a global variable declaration if it doesn't already exist. They get written in the file after the imports.
-    fn addGlobal(self: *Status, global_var: []const u8) !void {
-        if (array.contains([]const u8, self.globals.items, global_var) == null) {
-            try self.globals.append(global_var);
-        }
-    }
-
-    /// Appends a piece of code. Code gets written after the imports and globals.
-    fn addCode(self: *Status, code: []const u8) !void {
-        try self.code.appendSlice(code);
-        try self.code.append('\n');
-    }
-
     /// Generates the output files and writes the interpreted code to it.
-    pub fn flushCode(self: *Status, pack_path: []const u8) !void {
-        const file = try generateOutFiles(manager.global_allocator, pack_path);
+    pub fn flushCode(self: *Status, pack_path: []const u8, load_function_names: std.ArrayList([]const u8)) !void {
+        const file = try generateOutFiles(self.allocator, pack_path);
         defer file.close();
 
-        // imports
+        // Imports
         _ = try file.write("const std = @import(\"std\");\n");
         _ = try file.write("const interpret = @import(\"interpretation.zig\");\n");
         for (self.imports.items) |import| {
@@ -70,28 +83,76 @@ const Status = struct {
         }
         //
 
-        _ = try file.write("\n\n\n");
-        _ = try file.write("pub fn main() !void {\n");
-    
-        // globals
-        _ = try file.write("var gpa = std.heap.GeneralPurposeAllocator(.{}){};\n");
-        _ = try file.write("const allocator = gpa.allocator();\n");
-        _ = try file.write("_ = allocator;\n");
-        _ = try file.write("defer _ = gpa.deinit();\n");
-        for (self.globals.items) |global| {
-            _ = try file.write(global);
-            _ = try file.write("\n");
+        // All Funtions
+        _ = try file.write("\n\n\npub fn main() !void {\n");
+        for (load_function_names) |function_name| {
+            _ = try file.write("_ = try ");
+            _ = try file.write(function_name);
+            _ = try file.write("();\n");
         }
-        //
-
-        // other code
-        _ = try file.write("\n");
-        _ = try file.write(self.code.items);
         _ = try file.write("\nstd.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
-        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n}");
-        //
+        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n\n\n\n}");
+
+        const function_iterator = self.function_map.valueIterator();
+        while (function_iterator.next()) |func| {
+
+            file.write("fn ");
+            file.write(func.name);
+            file.write("() !isize {\n");
+
+            for (func.top_vars.items) |top_var| file.write(top_var);
+            file.write("\n");
+            file.write(func.code.items);
+
+            file.write("return 0;\n}");
+        }
     }
 };
+
+pub fn initInterpreterStatus(allocator: std.mem.Allocator) !void {
+    status = try Status.init(allocator);
+}
+
+pub fn deinitInterpreterStatus() void {
+    status.deinit();
+}
+
+
+
+const InterpretedFunction = struct {
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    top_vars: ArrayList([]const u8),
+    code: ArrayList(u8),
+
+    fn init(allocator: std.mem.Allocator, name: []const u8) InterpretedFunction {
+        return InterpretedFunction {
+            .allocator = allocator,
+            .name = name,
+            .top_vars = ArrayList([]const u8).init(allocator),
+            .code = ArrayList(u8).init(allocator)
+        };
+    }
+
+    fn deinit(self: *InterpretedFunction) void {
+        self.allocator.free(self.name); // The memory for name was allocated by `file_collector.Function`
+        self.top_vars.deinit();
+        self.code.deinit();
+    }
+
+    fn addTopVar(self: *InterpretedFunction, top_var: []const u8) !void {
+        if (array.contains([]const u8, self.top_var.items, top_var) == null) {
+            try self.top_var.append(top_var);
+        }
+    }
+
+    fn addCode(self: *InterpretedFunction, code: []const u8) !void {
+        try self.code.appendSlice(code);
+        try self.code.append('\n');
+    }
+};
+
+
 
 /// Generates the build.zig, copies the interpretation function file, and generateds the interpreted Zig file.
 fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs.File {
@@ -110,7 +171,6 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs
             dir,
             "/interpretation.zig"
         };
-
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
 
@@ -122,7 +182,6 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs
             dir,
             "/interpretation.zig"
         };
-
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
     
@@ -173,12 +232,14 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs
     return try pack_dir.createFile(out_path, .{});
 }
 
-pub fn initInterpreterStatus(allocator: std.mem.Allocator) !void {
-    status = try Status.init(allocator);
-}
 
-pub fn deinitInterpreterStatus() void {
-    status.deinit();
+pub fn evalFunction(func: f_collector.Function) !void {
+    try status.createNewFunction(func.name);
+    defer status.finishCurrentFunction();
+
+    while (func.commands.next()) |cmd| {
+        try evalCmd(cmd);
+    }
 }
 
 
@@ -191,12 +252,12 @@ const Commands = enum {
     clear,
 };
 
-pub fn evalCmd(command: []const u8) !void {
+fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
     const context_index = primary_cmd.len + 1;
     
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
-        .function => try say(command[context_index..]),
+        .function => try function(command[context_index..]),
         .say => try say(command[context_index..]),
         .give => try give(command[context_index..]),
         .clear => try clear(command[context_index..]),
@@ -232,76 +293,32 @@ fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]c
 
 
 
-const Function = struct {
-    name: []const u8,
-    parameter: ?[]const u8,
-    returns: bool = false,
-    content: []const u8,
+fn function(context: []const u8) !void {
+    var context_index: usize = 0;
+    const function_path = getNextArgument(context, &context_index, " ").?;
 
-    fn init(allocator: std.mem.Allocator, context: []const u8) !Function {
-        var context_index: usize = 0;
+    var function_file = try f_collector.Function.init(status.allocator, manager.settings, function_path);
+    defer function_file.deinit();
 
-        const full_function_path = getNextArgument(context, &context_index, " ").?;
-
-        return Function {
-            .name = full_function_path,
-            .parameter = param_blk: {
-                const arg = getNextArgument(context, &context_index, " ") orelse break :param_blk null;
-                
-                if (std.mem.eql(u8, arg, "with")) {
-                    // TODO Implement nbt sources for parameters
-                    return error{NotYetImplemented};
-                }
-                else break :param_blk arg;
-            },
-            .content = contents_blk: {
-                const function_path = inner_contents_blk: {
-                    const separator_index = std.mem.indexOfScalar(u8, full_function_path, ':').?;
-                    const parts = [_][]const u8{
-                        "data/",
-                        full_function_path[0..separator_index],
-                        "function/",
-                        full_function_path[separator_index + 1..],
-                        ".mcfunction"
-                    };
-                    
-                    break :inner_contents_blk try std.mem.concat(allocator, u8, parts);
-                };
-                defer allocator.free(function_path);
-
-                const function = try f_collector.FunctionFile.init(allocator, manager.settings, function_path);
-                defer function.deinit();
-
-                // TODO to make this work, the eval command needs to a function name as parameter to write the command code to that function.
-                try evalCmd(function.commands.first());
-                while (function.commands.next()) |cmd| {
-                    try evalCmd(cmd);
-                }
-                
-                break :contents_blk null; //TMP
-            }
-        };
-    }
-};
-
-// fn function(context: []const u8) !void {
-//     const function = try Function.parse(context);
-
-// }
+    try evalFunction(function_file);
+}
 
 
 
 fn say(context: []const u8) !void {    
-    try status.addGlobal("const stdout = std.io.getStdOut();");
+    try status.current_function.addTopVar("const stdout = std.io.getStdOut();");
 
-    const code_parts = [3][]const u8{
-        "_ = try stdout.write(\"",
-        context,
-        "\\n\");"
+    const code = blk: {
+        const parts = [3][]const u8{
+            "_ = try stdout.write(\"",
+            context,
+            "\\n\");"
+        };
+        break :blk try std.mem.concat(status.allocator, u8, &parts);
     };
-    const code = try std.mem.concat(manager.global_allocator, u8, &code_parts);
-    defer manager.global_allocator.free(code);
-    try status.addCode(code);
+    defer status.allocator.free(code);
+
+    try status.current_function.addCode(code);
 }
 
 
@@ -354,11 +371,11 @@ fn give(context: []const u8) !void {
             file_info.extension,
             "\");"
         };
-
-        break :blk try std.mem.concat(manager.global_allocator, u8, &parts);
+        break :blk try std.mem.concat(status.allocator, u8, &parts);
     };
-    defer manager.global_allocator.free(code);
-    try status.addCode(code);
+    defer status.allocator.free(code);
+
+    try status.current_function.addCode(code);
 }
 
 fn clear(context: []const u8) !void {
@@ -376,9 +393,9 @@ fn clear(context: []const u8) !void {
             if (std.mem.eql(u8, file_info.extension, "")) "true" else "false",
             ");"
         };
-
-        break :blk try std.mem.concat(manager.global_allocator, u8, &parts);
+        break :blk try std.mem.concat(status.allocator, u8, &parts);
     };
-    defer manager.global_allocator.free(code);
-    try status.addCode(code);
+    defer status.allocator.free(code);
+
+    try status.current_function.addCode(code);
 }
