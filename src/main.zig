@@ -1,7 +1,7 @@
 
 const std = @import("std");
 const manager = @import("manager.zig");
-const f_collector = @import("file_collector.zig");
+const f_collector = @import("util/file_collector.zig");
 const interpreter = @import("interpreter.zig");
 
 
@@ -21,28 +21,22 @@ pub fn main() !void {
     defer manager.deinitSettings();
     const settings = manager.settings;
 
-    const load_functions = f_collector.getFuncFilesList(allocator, settings.path, .load) catch |err| {
-        if (err == std.json.Error.SyntaxError){
-            std.debug.print("Syntax error in '{s}/data/minecraft/tags/functions/load.json'", .{settings.path});
-        }
-        else {
-            std.debug.print("{any}", .{err}); 
-        }
-        return;
-    };
+    const load_functions = try f_collector.getFuncFilesList(allocator, settings.path, .load);
     defer load_functions.deinit();
 
-    for (load_functions.value.values) |func| {
-        var function = try f_collector.Function.init(allocator, settings.path, func);
+    var load_function_names = std.ArrayList([]const u8).init(allocator);
+    defer load_function_names.deinit();
+
+    for (load_functions.value.values) |func_path| {
+        var function = try f_collector.Function.init(allocator, settings.path, func_path);
         defer function.deinit();
 
-        try interpreter.evalCmd(function.commands.first());
-        while (function.commands.next()) |cmd| {
-            try interpreter.evalCmd(cmd);
-        }
+        try load_function_names.append(function.name);
+
+        try interpreter.evalFunction(&function);
     }
 
-    try interpreter.status.flushCode(settings.path);
+    try interpreter.status.flushCode(settings.path, load_function_names);
 
     try compileInterpetedCode(allocator, settings.path);
 }
@@ -73,13 +67,6 @@ fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !v
     defer allocator.free(exe_path);
     allocator.free(exe_dir_path);
     std.mem.replaceScalar(u8, exe_path, '\\', '/');
-
-
-    // std.debug.print("\n{s}\n{s}\n{s}\n\n", .{
-    //     exe_path,
-    //     source_path,
-    //     out_path
-    // }); //TEMP
     
     const build_file_path = blk: {
         const parts = [2][]const u8{

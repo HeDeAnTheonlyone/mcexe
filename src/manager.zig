@@ -28,7 +28,7 @@ pub const Settings = struct {
     fn init(args_arr: [][]u8, allocator: std.mem.Allocator) !Settings {        
         return  Settings{
             .allocator = allocator,
-            .path = path_blk: {
+            .path = blk: {
                 const tmp_path = for (args_arr, 0..) |arg, index| {
                     if (std.mem.eql(u8, arg, "-path")) {
                         if (index + 1 >= args_arr.len) {
@@ -42,7 +42,7 @@ pub const Settings = struct {
                 else "";
                 const tmp_full_path = try std.fs.cwd().realpathAlloc(allocator, tmp_path);
                 std.mem.replaceScalar(u8, tmp_full_path, '\\', '/');
-                break :path_blk tmp_full_path;
+                break :blk tmp_full_path;
             }
         };
     }
