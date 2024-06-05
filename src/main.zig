@@ -33,7 +33,7 @@ pub fn main() !void {
 
         try load_function_names.append(function.name);
 
-        try interpreter.evalFunction(function);
+        try interpreter.evalFunction(&function);
     }
 
     try interpreter.status.flushCode(settings.path, load_function_names);

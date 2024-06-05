@@ -4,20 +4,18 @@ const manager = @import("manager.zig");
 const f_collector = @import("util/file_collector.zig");
 const array = @import("util/array.zig");
 
-
-
 const ArrayList = std.ArrayList;
 
 
 
-var status: Status = undefined;
+pub var status: Status = undefined;
 
 const Status = struct {
     allocator: std.mem.Allocator,
     imports: std.ArrayList([]const u8),
     function_stack: std.ArrayList([]const u8),
     function_map: std.StringHashMap(InterpretedFunction),
-    current_function: ?InterpretedFunction,
+    current_function: *InterpretedFunction,
     var_count: usize = 0,
 
     fn init(allocator: std.mem.Allocator) !Status {
@@ -26,7 +24,7 @@ const Status = struct {
             .imports = std.ArrayList([]const u8).init(allocator),
             .function_stack = std.ArrayList([]const u8).init(allocator),
             .function_map = std.StringHashMap(InterpretedFunction).init(allocator),
-            .current_function = null
+            .current_function = undefined
         };
     }
 
@@ -53,7 +51,10 @@ const Status = struct {
     }
 
     fn updateCurrentFunction(self: *Status) void {
-        self.current_function = self.function_map.get(self.function_stack.getLast()).?;
+        if (self.function_stack.items.len == 0) {
+            self.current_function = undefined;
+        }
+        else self.current_function = self.function_map.getPtr(self.function_stack.getLast()).?;
     }
 
     /// Returns a new variable name to use in the interpreted code. It starts with 1 and counts up for each new variable. The returned name is `_<count>`.
@@ -85,7 +86,7 @@ const Status = struct {
 
         // All Funtions
         _ = try file.write("\n\n\npub fn main() !void {\n");
-        for (load_function_names) |function_name| {
+        for (load_function_names.items) |function_name| {
             _ = try file.write("_ = try ");
             _ = try file.write(function_name);
             _ = try file.write("();\n");
@@ -93,18 +94,21 @@ const Status = struct {
         _ = try file.write("\nstd.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
         _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n\n\n\n}");
 
-        const function_iterator = self.function_map.valueIterator();
+        var function_iterator = self.function_map.valueIterator();
         while (function_iterator.next()) |func| {
 
-            file.write("fn ");
-            file.write(func.name);
-            file.write("() !isize {\n");
+            _ = try file.write("fn ");
+            _ = try file.write(func.name);
+            _ = try file.write("() !isize {\n");
 
-            for (func.top_vars.items) |top_var| file.write(top_var);
-            file.write("\n");
-            file.write(func.code.items);
+            for (func.top_vars.items) |top_var| {
+                _ = try file.write(top_var);
+            }
+            _ = try file.write("\n");
+            _ = try file.write(func.code.items);
+            _ = try file.write("return 0;\n}\n\n");
 
-            file.write("return 0;\n}");
+            func.deinit();
         }
     }
 };
@@ -141,8 +145,8 @@ const InterpretedFunction = struct {
     }
 
     fn addTopVar(self: *InterpretedFunction, top_var: []const u8) !void {
-        if (array.contains([]const u8, self.top_var.items, top_var) == null) {
-            try self.top_var.append(top_var);
+        if (array.contains([]const u8, self.top_vars.items, top_var) == null) {
+            try self.top_vars.append(top_var);
         }
     }
 
@@ -233,7 +237,7 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs
 }
 
 
-pub fn evalFunction(func: f_collector.Function) !void {
+pub fn evalFunction(func: *f_collector.Function) !void {
     try status.createNewFunction(func.name);
     defer status.finishCurrentFunction();
 
@@ -292,15 +296,62 @@ fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]c
 }
 
 
+const FunctionCommandFunctionErrors = error {
+    OutOfMemory,
+    FileNotFound,
+    AccessDenied,
+    NameTooLong,
+    NotDir,
+    SymLinkLoop,
+    InputOutput,
+    FileTooBig,
+    IsDir,
+    ProcessFdQuotaExceeded,
+    SystemFdQuotaExceeded,
+    NoDevice,
+    SystemResources,
+    NoSpaceLeft,
+    BadPathName,
+    DeviceBusy,
+    SharingViolation,
+    PipeBusy,
+    InvalidWtf8,
+    NetworkNotFound,
+    PathAlreadyExists,
+    AntivirusInterference,
+    Unexpected,
+    InvalidUtf8,
+    FileLocksNotSupported,
+    FileBusy,
+    WouldBlock,
+    OperationAborted,
+    BrokenPipe,
+    ConnectionResetByPeer,
+    ConnectionTimedOut,
+    NotOpenForReading,
+    SocketNotConnected,
+    StreamTooLong
+};
 
-fn function(context: []const u8) !void {
+fn function(context: []const u8) FunctionCommandFunctionErrors!void {
     var context_index: usize = 0;
-    const function_path = getNextArgument(context, &context_index, " ").?;
+    const function_path = getNextArgument(context, &context_index, ' ').?;
 
-    var function_file = try f_collector.Function.init(status.allocator, manager.settings, function_path);
-    defer function_file.deinit();
+    var func = try f_collector.Function.init(status.allocator, manager.settings.path, function_path);
+    defer func.deinit();
 
-    try evalFunction(function_file);
+    const code = blk: {
+        const parts = [3][]const u8{
+            "_ = try ",
+            func.name,
+            "();"
+        };
+        break :blk try std.mem.concat(status.allocator, u8, &parts);
+    };
+    try status.current_function.addCode(code);
+    status.allocator.free(code);
+
+    try evalFunction(&func);
 }
 
 

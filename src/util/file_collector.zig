@@ -28,7 +28,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
     const full_path = blk: {
         const parts = [4][]const u8{
             pack_path,
-            "/data/minecraft/tags/functions/",
+            "/data/minecraft/tag/function/",
             func_list.getStrName(),
             ".json"
         };
@@ -61,7 +61,7 @@ pub const Function = struct {
                 pack_path,
                 "/data/",
                 mc_function_path[0..sperator_index],
-                "/functions/",
+                "/function/",
                 mc_function_path[sperator_index + 1..],
                 ".mcfunction"
             };
@@ -75,7 +75,7 @@ pub const Function = struct {
         const contents = try file.reader().readAllAlloc(allocator, 1024 * 64);
         var sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
         allocator.free(contents);
-        try sanatized_contents.insert(0, '\n'); // This line is to having to use ArrayList.first(). ArrayList.next() can be used directly.
+        try sanatized_contents.insert(0, '\n'); // This line is to not having to use ArrayList.first(). ArrayList.next() can be used directly.
 
         return Function{
             .name = blk: {
