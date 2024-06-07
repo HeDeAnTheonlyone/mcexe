@@ -160,19 +160,22 @@ const InterpretedFunction = struct {
 
 /// Generates the build.zig, copies the interpretation function file, and generateds the interpreted Zig file.
 fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs.File {
-    var pack_dir = try std.fs.openDirAbsolute(pack_path, .{});
-    defer pack_dir.close();
+    const namespace = namespace_blk: {
+        var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
+        break :namespace_blk path_iter.first();
+    };
 
-    var out_dir = try std.fs.Dir.makeOpenPath(pack_dir, "out", .{});
+    var out_dir = out_dir_blk: {
+        var pack_dir = try std.fs.openDirAbsolute(pack_path, .{});
+        defer pack_dir.close();
+        break :out_dir_blk try std.fs.Dir.makeOpenPath(pack_dir, "out/mcexe-out", .{});
+    };
     defer out_dir.close();
 
     // copy interpreter.zig
     const lib_source_path = blk: {
-        const dir = try std.fs.selfExeDirPathAlloc(allocator);
-        defer allocator.free(dir);
-
         const parts = [2][]const u8{
-            dir,
+            manager.settings.exe_dir_path,
             "/interpretation.zig"
         };
         break :blk try std.mem.concat(allocator, u8, &parts);
@@ -194,46 +197,41 @@ fn generateOutFiles(allocator: std.mem.Allocator, pack_path: []const u8) !std.fs
     allocator.free(lib_target_path);
 
     // generate build.zig
-    const build_file = try pack_dir.createFile("out/build.zig", .{});
+    const build_file = try out_dir.createFile("build.zig", .{});
     defer build_file.close();
 
-    var path_iter = std.mem.splitBackwardsScalar(u8, pack_path, '/');
-    const namespace = path_iter.first();
-
     const build_code = blk: {
-        const parts = [14][]const u8{
-            "const std = @import(\"std\");\n\n",
-            "pub fn build(b: *std.Build) void {\n",
-            "const exe = b.addExecutable(.{\n",
-            ".name = \"",
-            namespace,
-            "\",\n",
-            ".root_source_file = b.path(\"",
-            namespace,
-            ".zig\"),\n",
-            ".target = b.standardTargetOptions(.{}),\n",
-            ".optimize = b.standardOptimizeOption(.{}),\n",
-            "});\n\n",
-            "b.installArtifact(exe);\n",
-            "}"
+        const parts = [5][]const u8{
+            \\const std = @import("std");
+            \\
+            \\pub fn build(b: *std.Build) void {
+            \\   const exe = b.addExecutable(.{
+            \\      .name = "
+            ,namespace,\\",
+            \\      .root_source_file = b.path("
+            ,namespace,\\.zig"),
+            \\      .target = b.standardTargetOptions(.{}),
+            \\      .optimize = b.standardOptimizeOption(.{}),
+            \\   });
+            \\   b.installArtifact(exe);
+            \\}
         };
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
-    defer allocator.free(build_code);
     _ = try build_file.writeAll(build_code);
+    allocator.free(build_code);
 
-    // creat and return interpretation file
-    const out_path = blk: {
-        const parts = [3][]const u8{
-            "out/",
+    // creat and return empty interpretation file
+    const out_file_name = blk: {
+        const parts = [2][]const u8{
             namespace,
             ".zig"
         };        
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
-    defer allocator.free(out_path);
+    defer allocator.free(out_file_name);
 
-    return try pack_dir.createFile(out_path, .{});
+    return try out_dir.createFile(out_file_name, .{});
 }
 
 
@@ -294,6 +292,7 @@ fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]c
     start_index.* = end + 1;
     return command[start..end];
 }
+
 
 
 const FunctionCommandFunctionErrors = error {

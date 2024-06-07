@@ -56,36 +56,56 @@ fn deinitAll() void {
 
 
 fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !void {
-    const exe_dir_path = try std.fs.selfExeDirPathAlloc(allocator);
     const exe_path = blk: {
         const parts = [2][]const u8{
-            exe_dir_path,
+            manager.settings.exe_dir_path,
             "/zig.exe"
         };
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
     defer allocator.free(exe_path);
-    allocator.free(exe_dir_path);
-    std.mem.replaceScalar(u8, exe_path, '\\', '/');
     
     const build_file_path = blk: {
         const parts = [2][]const u8{
             pack_path,
-            "/out/build.zig"
+            "/out/mcexe-out/build.zig"
         };
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
     defer allocator.free(build_file_path);
+    
+    const cache_path = blk: {
+        const parts = [2][]const u8{
+            pack_path,
+            "/out/zig-cache"
+        };
+        break :blk try std.mem.concat(allocator, u8, &parts);
+    };
+    defer allocator.free(cache_path);
 
-    const comp_args = [4][]const u8{
+    const out_dir = blk: {
+        const parts = [2][]const u8{
+            pack_path,
+            "/out"
+        };
+        break :blk try std.mem.concat(allocator, u8, &parts);
+    };
+    defer allocator.free(out_dir);
+
+    const comp_args = [8][]const u8{
         exe_path,
         "build",
+
         "--build-file",
-        build_file_path
+        build_file_path,
+
+        "--cache-dir",
+        cache_path,
+
+        "--prefix-exe-dir",
+        out_dir
     };
 
     var compile = std.process.Child.init(&comp_args, allocator);
     _ = try std.process.Child.spawnAndWait(&compile);
-
-    // std.debug.print("{any}", .{result}); //TEMP
 }

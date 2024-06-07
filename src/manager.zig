@@ -23,12 +23,18 @@ pub var settings: Settings = undefined;
 /// `path`: Path to the datapack. Leave blank if executed in the datapacks root directory.
 pub const Settings = struct {
     allocator: std.mem.Allocator,
+    exe_dir_path: []const u8,
     path: []const u8,
 
     fn init(args_arr: [][]u8, allocator: std.mem.Allocator) !Settings {        
         return  Settings{
             .allocator = allocator,
-            .path = blk: {
+            .exe_dir_path = exe_path_blk: {
+                const path = try std.fs.selfExeDirPathAlloc(allocator);
+                std.mem.replaceScalar(u8, path, '\\', '/');
+                break :exe_path_blk path;
+            },
+            .path = path_blk: {
                 const tmp_path = for (args_arr, 0..) |arg, index| {
                     if (std.mem.eql(u8, arg, "-path")) {
                         if (index + 1 >= args_arr.len) {
@@ -42,13 +48,14 @@ pub const Settings = struct {
                 else "";
                 const tmp_full_path = try std.fs.cwd().realpathAlloc(allocator, tmp_path);
                 std.mem.replaceScalar(u8, tmp_full_path, '\\', '/');
-                break :blk tmp_full_path;
+                break :path_blk tmp_full_path;
             }
         };
     }
 
     fn deinit(self: *Settings) void {
-        self.allocator.free(self.*.path);
+        self.allocator.free(self.exe_dir_path);
+        self.allocator.free(self.path);
     }
 };
 
