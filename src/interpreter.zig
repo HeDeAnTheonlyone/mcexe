@@ -386,13 +386,13 @@ const ItemComponents = struct {
 
     fn parse(components: []const u8) ItemComponents {
         return ItemComponents {
-            .item_name = getCoponentValue(components, "item_name=\""),
-            .lore = getCoponentValue(components, "lore=\"")
+            .item_name = getComponentValue(components, "item_name=\""),
+            .lore = getComponentValue(components, "lore=\"")
         };
     }
 
     // TODO make it work for other values than strings
-    fn getCoponentValue(components: []const u8, component_key: []const u8) []const u8 {
+    fn getComponentValue(components: []const u8, component_key: []const u8) []const u8 {
         const start_index = if (std.mem.indexOf(u8, components, component_key)) |index| index + component_key.len else return "";
         var end_index = start_index + 1;
         while (true) : (end_index += 1) {
