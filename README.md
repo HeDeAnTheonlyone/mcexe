@@ -21,3 +21,7 @@ Because it uses Zig as intermediate language, it will have (nearly) all the capa
 ## Will be unsupported in version 1.0.0
 - multiline commands
 - everything else than function files (advancements, predicates, loot tables, etc.)
+
+***
+
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/mcexe_big.png)
