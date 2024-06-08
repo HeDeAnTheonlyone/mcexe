@@ -13,9 +13,9 @@ Because it uses Zig as intermediate language, it will have (nearly) all the capa
 
 ## Usage
  
-1. (optional) Add the folder where you unzipped the files to your path environment variables for easier access to the mcexe.exe file. 
-2.  Run mcexe.exe either directly in your datapack root directory without arguments or<br>run it from anywhere else with the `-path "path to your datapack"` arguments (It automatically recognize if it's an absolute or relative file path)
-3. Retrieve your compiled program from the newly generated `out` folder in your datapack. (There will also be the interpreted .Zig file, .obj object file, and if you're on windows a .pbd file)
+1. (optional) Add the folder where you unzipped the files to your path environment variables for easier access to the mcexe command. 
+2.  Run mcexe either directly in your datapack root directory without arguments or<br>run it from anywhere else with the `-path "path/to/your/datapack"` arguments (It automatically recognize if it's an absolute or relative file path)
+3. Retrieve your compiled program from the newly generated `out` folder in your datapack. (There will also be subfolders that contain other files for internal stuff)
 
 
 
