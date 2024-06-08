@@ -28,7 +28,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
     const full_path = blk: {
         const parts = [4][]const u8{
             pack_path,
-            "/data/minecraft/tag/function/",
+            "/data/minecraft/tags/function/",
             func_list.getStrName(),
             ".json"
         };

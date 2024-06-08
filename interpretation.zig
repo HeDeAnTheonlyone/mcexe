@@ -4,11 +4,12 @@ const std = @import("std");
 
 
 /// Create a file or folder at the given path. If the path doesn't exist, it will create all the needed folders. It recognizes absolute and relative paths.
-pub fn mkFile(directory_path: []const u8, file_name: []const u8) !void {
+pub fn mkFile(directory_path: []const u8, file_name: []const u8, file_data: []const u8) !void {
     var dir = try std.fs.Dir.makeOpenPath(std.fs.cwd(), directory_path, .{});
     defer dir.close();
 
     var file = try dir.createFile(file_name, .{});
+    if (file_data.len > 0) try file.writeAll(file_data);
     defer file.close();
 }
 
