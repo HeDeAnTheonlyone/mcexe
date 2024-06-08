@@ -1,7 +1,7 @@
 # ⚠️This project is very early in development and very far from being finished⚠️
 
-![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/mcexe.png)
-(lizard in German is pronounced like exe)
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/mcexe.png)<br>
+*(lizard in German is pronounced like exe)*<br>
 # mcexe
 mcexe is a transpiler that converts minecraft datapacks and commands into real executable programs.<br>
 It does that by interpreting different commands, for example `/give @s paper[minecraft:item_name="test_file"]`, and generates Zig code.<br>
