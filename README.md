@@ -4,7 +4,7 @@
 
 # mcexe
 mcexe is a transpiler that converts minecraft datapacks and commands into real executable programs.<br>
-It does that by interpreting different commands, for example `/give @s txt{CustomName:"test_file"}`, and generates Zig code.<br>
+It does that by interpreting different commands, for example `/give @s paper[minecraft:item_name="test_file"]`, and generates Zig code.<br>
 In this case, the command would creates a `txt` file with the name `test_file` in the `current working directory`.<br>
 It then compiles the generated Zig file to the specified executable file.<br>
 Because it uses Zig as intermediate language, it will have (nearly) all the capabilities of Zig.
