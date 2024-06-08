@@ -282,7 +282,7 @@ fn getPrimaryCmd(command: []const u8) ?[]const u8 {
     return getNextArgument(command[first_char..], &i, ' ');
 }
 
-/// Returns the next argument in the command from the given starting index or null if there is no next argument. It also increases the given index value to the next arguments start index. !!!DON'T USE `std.mem.splitScalar()` THIS FUNCTION IS NEEDED FOR LATER DEVELOPMENT!!!
+/// Returns the next argument in the command from the given starting index or null if there is no next argument. It also increases the given index value to the next arguments start index.
 fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]const u8 {
     const start: usize = start_index.*;
 
@@ -378,47 +378,79 @@ fn say(context: []const u8) !void {
 
 
 
+const ItemComponents = struct {
+    item_name: []const u8,
+    lore: []const u8,
+
+    // FIX you can easily confuse and potentially break it if you use the the needle in your text
+
+    fn parse(components: []const u8) ItemComponents {
+        return ItemComponents {
+            .item_name = getCoponentValue(components, "item_name=\""),
+            .lore = getCoponentValue(components, "lore=\"")
+        };
+    }
+
+    // TODO make it work for other values than strings
+    fn getCoponentValue(components: []const u8, component_key: []const u8) []const u8 {
+        const start_index = if (std.mem.indexOf(u8, components, component_key)) |index| index + component_key.len else return "";
+        var end_index = start_index + 1;
+        while (true) : (end_index += 1) {
+            if (components[end_index] == '"' and !(components[end_index - 1] == '\\')) break;
+        }
+        return components[start_index..end_index];
+    }
+};
+
 const FileInfo = struct {
     path: []const u8,
     name: []const u8,
     extension: []const u8,
+    data: []const u8,
 
     fn parse(context: []const u8) FileInfo {
         var context_index: usize = 0;
 
         const selector = getNextArgument(context, &context_index, ' ').?;
         const item = getNextArgument(context, &context_index, '[').?;
-        const item_component = getNextArgument(context, &context_index, ']').?;
+        const item_component = component_blk: {
+            const components_string = getNextArgument(context, &context_index, ']').?;
+            const components = ItemComponents.parse(components_string);
+            break :component_blk ItemComponents{
+                .item_name = components.item_name,
+                .lore = components.lore
+            };
+        };
 
         //TODO currently only supports selectors that are names and plain @s
         return FileInfo {
             .path = if (std.mem.startsWith(u8, selector, "@")) "" else selector,
             .extension = if (std.mem.startsWith(u8, item, "minecraft:")) itemToExtension(item[10..]) else itemToExtension(item),
-            .name = blk: {
-                const index = std.mem.indexOf(u8, item_component, "item_name=").? + 10;
-                break :blk std.mem.trim(u8, item_component[index..], "\"");
-            }
+            .name = item_component.item_name,
+            .data = item_component.lore
         };
     }
-};
 
-fn itemToExtension(item: []const u8) []const u8 {
-    return if (std.mem.eql(u8, item, "*")) ""
-        else if (std.mem.eql(u8, item, "paper")) ".txt"
-        else ".txt";
-}
+    fn itemToExtension(item: []const u8) []const u8 {
+        return if (std.mem.eql(u8, item, "*")) ""
+            else if (std.mem.eql(u8, item, "paper")) ".txt"
+            else ".txt";
+    }
+};
 
 fn give(context: []const u8) !void {
     const file_info = FileInfo.parse(context);
 
     const code = blk: {
-        const parts = [7][]const u8{
+        const parts = [9][]const u8{
             "try interpret.mkFile(",
             "\"",
             file_info.path,
             "\",\"",
             file_info.name,
             file_info.extension,
+            "\",\"",
+            file_info.data,
             "\");"
         };
         break :blk try std.mem.concat(status.allocator, u8, &parts);
