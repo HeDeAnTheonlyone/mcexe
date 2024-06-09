@@ -34,6 +34,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
 }
 
 
+
 /// The contents of the read function
 pub const Function = struct {
     name: []const u8,
