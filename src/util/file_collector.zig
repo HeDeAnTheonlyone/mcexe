@@ -7,29 +7,16 @@ const json = std.json;
 
 
 
-/// Enum of vanilla builtin function tags with special functionality 
-const VanillaFunctionFileLists = enum {
-    tick,
-    load,
-    
-    fn getStrName(self: VanillaFunctionFileLists) []const u8 {
-        return switch (self) {
-            .load => "load",
-            .tick => "tick"
-        };
-    }
-};
-
 const FunctionFileList = struct {
     values: [][]u8
 };
 
-pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: VanillaFunctionFileLists) !std.json.Parsed(FunctionFileList) {
+pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, comptime func_list: enum {load, tick}) !std.json.Parsed(FunctionFileList) {
     const full_path = blk: {
         const parts = [4][]const u8{
             pack_path,
             "/data/minecraft/tags/function/",
-            func_list.getStrName(),
+            if (func_list == .load) "load" else "tick",
             ".json"
         };
 
