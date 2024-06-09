@@ -36,7 +36,7 @@ pub const Settings = struct {
                 break :exe_path_blk path;
             },
             .path = path_blk: {
-                const tmp_path = if (array.contains([]const u8, args_arr, "-path")) |index| args_arr[index + 1] else "";
+                const tmp_path = if (array.contains([]const u8, args_arr, "--path")) |index| args_arr[index + 1] else "";
                 const tmp_full_path = try std.fs.cwd().realpathAlloc(allocator, tmp_path);
                 std.mem.replaceScalar(u8, tmp_full_path, '\\', '/');
                 break :path_blk tmp_full_path;
@@ -57,3 +57,17 @@ pub fn initSettings(args_arr: [][]u8, allocator: std.mem.Allocator) !void {
 pub fn deinitSettings() void {
     settings.deinit();
 }
+
+
+
+pub const help_msg = 
+    \\
+    \\Usage: mcexe [options]
+    \\
+    \\Options:
+    \\  
+    \\  -h, --help                  Print command and options usage
+    \\  --path [path]               Set absolute or relative path to the target datapack
+    \\                              (if option is not present or left blank it uses the current working directory)
+    \\ 
+    ;
