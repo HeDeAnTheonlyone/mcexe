@@ -2,6 +2,7 @@
 const std = @import("std");
 const manager = @import("manager.zig");
 const f_collector = @import("util/file_collector.zig");
+const array = @import("util/array.zig");
 const interpreter = @import("interpreter.zig");
 
 
@@ -12,12 +13,18 @@ pub fn main() !void {
 
     const allocator = manager.global_allocator;
 
-    const arguments: [][:0]u8 = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, arguments);
+    const args_arr = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args_arr);
 
-    // TODO add '-help' argument handling
+    if (array.containsAny([]const u8, args_arr, &[2][]const u8{"-h", "--help"})) |index| {
+        _ = index; // I will need this later
+        const stdout = std.io.getStdOut();
 
-    try manager.initSettings(arguments, allocator);
+        _ = try stdout.write(manager.help_msg);
+        return;
+    }
+
+    try manager.initSettings(args_arr, allocator);
     defer manager.deinitSettings();
     const settings = manager.settings;
 

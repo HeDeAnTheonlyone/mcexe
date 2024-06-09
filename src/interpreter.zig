@@ -386,17 +386,22 @@ const ItemComponents = struct {
 
     fn parse(components: []const u8) ItemComponents {
         return ItemComponents {
-            .item_name = getComponentValue(components, "item_name=\""),
-            .lore = getComponentValue(components, "lore=\"")
+            .item_name = getComponentValue(components, "item_name=\"", .string),
+            .lore = getComponentValue(components, "lore=\"", .string)
         };
     }
 
-    // TODO make it work for other values than strings
-    fn getComponentValue(components: []const u8, component_key: []const u8) []const u8 {
+    fn getComponentValue(components: []const u8, component_key: []const u8, value_type: enum {string, number}) []const u8 {
         const start_index = if (std.mem.indexOf(u8, components, component_key)) |index| index + component_key.len else return "";
         var end_index = start_index + 1;
-        while (true) : (end_index += 1) {
-            if (components[end_index] == '"' and !(components[end_index - 1] == '\\')) break;
+        
+        if (value_type == .string) {
+            while (true) : (end_index += 1) {
+                if (components[end_index] == '"' and !(components[end_index - 1] == '\\')) break;
+            }
+        }
+        else {
+            while (end_index < components.len and components[end_index] != ',') : (end_index += 1) {}
         }
         return components[start_index..end_index];
     }

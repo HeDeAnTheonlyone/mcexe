@@ -5,10 +5,20 @@ const ArrayList = std.ArrayList;
 
 
 
-/// Searches a given array for a given value and returns the index of the first element that matches or null if no element matches.
+/// Searches a given array for a given value and returns the index of the first matching element or null if no element matches.
 pub fn contains(comptime T: type, haystack: []T, needle: T) ?usize {
     return for (haystack, 0..) |element, index| {
         if (std.mem.eql(@TypeOf(element[0]), element, needle)) break index;
+    }
+    else null;
+}
+
+/// Searches a given array for any value in a second given array and returns the index of the first matching element or null if no element matches.
+pub fn containsAny(comptime T: type, haystack: []T, needles: []const T) ?usize {
+    return outer: for (haystack, 0..) |element, index| {
+        for (needles) |needle| {
+            if (std.mem.eql(@TypeOf(element[0]), element, needle)) break :outer index;
+        }
     }
     else null;
 }
