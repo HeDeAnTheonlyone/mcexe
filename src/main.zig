@@ -12,10 +12,10 @@ pub fn main() !void {
 
     const allocator = manager.global_allocator;
 
-    const arguments: [][:0]u8 = try std.process.argsAlloc(allocator);
+    const arguments = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, arguments);
 
-    // TODO add '-help' argument handling
+
 
     try manager.initSettings(arguments, allocator);
     defer manager.deinitSettings();

@@ -1,5 +1,6 @@
 
 const std = @import("std");
+const array = @import("util/array.zig");
 
 
 
@@ -26,7 +27,7 @@ pub const Settings = struct {
     exe_dir_path: []const u8,
     path: []const u8,
 
-    fn init(args_arr: [][]u8, allocator: std.mem.Allocator) !Settings {        
+    fn init(args_arr: [][]const u8, allocator: std.mem.Allocator) !Settings {        
         return  Settings{
             .allocator = allocator,
             .exe_dir_path = exe_path_blk: {
@@ -35,17 +36,7 @@ pub const Settings = struct {
                 break :exe_path_blk path;
             },
             .path = path_blk: {
-                const tmp_path = for (args_arr, 0..) |arg, index| {
-                    if (std.mem.eql(u8, arg, "-path")) {
-                        if (index + 1 >= args_arr.len) {
-                            break "";
-                        }
-                        else {
-                            break args_arr[index + 1];
-                        }
-                    }
-                }
-                else "";
+                const tmp_path = if (array.contains([]const u8, args_arr, "-path")) |index| args_arr[index + 1] else "";
                 const tmp_full_path = try std.fs.cwd().realpathAlloc(allocator, tmp_path);
                 std.mem.replaceScalar(u8, tmp_full_path, '\\', '/');
                 break :path_blk tmp_full_path;
