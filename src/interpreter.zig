@@ -16,6 +16,7 @@ const Status = struct {
     function_stack: std.ArrayList([]const u8),
     function_map: std.StringHashMap(InterpretedFunction),
     current_function: *InterpretedFunction,
+    current_line: usize = 0,
     var_count: usize = 0,
 
     fn init(allocator: std.mem.Allocator) !Status {
@@ -92,21 +93,23 @@ const Status = struct {
             _ = try file.write("();\n");
         }
         _ = try file.write("\nstd.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
-        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n\n\n\n}");
+        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);}\n\n\n\n");
 
         var function_iterator = self.function_map.valueIterator();
         while (function_iterator.next()) |func| {
 
             _ = try file.write("fn ");
             _ = try file.write(func.name);
-            _ = try file.write("() !isize {\n");
+            _ = try file.write("() !");
+            _ = try file.write(if (func.returns) "i32" else "void");
+            _ = try file.write(" {\n");
 
             for (func.top_vars.items) |top_var| {
                 _ = try file.write(top_var);
             }
-            _ = try file.write("\n");
+            _ = try file.write("\n\n");
             _ = try file.write(func.code.items);
-            _ = try file.write("return 0;\n}\n\n");
+            _ = try file.write("}\n\n");
 
             func.deinit();
         }
@@ -126,6 +129,7 @@ pub fn deinitInterpreterStatus() void {
 const InterpretedFunction = struct {
     allocator: std.mem.Allocator,
     name: []const u8,
+    returns: bool = false,
     top_vars: ArrayList([]const u8),
     code: ArrayList(u8),
 
@@ -239,12 +243,19 @@ pub fn evalFunction(func: *f_collector.Function) !void {
     try status.createNewFunction(func.name);
     defer status.finishCurrentFunction();
 
-    while (func.commands.next()) |cmd| {
-        try evalCmd(cmd);
+    while (func.commands.next()) |cmd| : (func.current_line += 1) {
+        evalCmd(cmd) catch |err| {
+            // TODO stop ignoring and hiding all the leaked memory on error!
+            std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+        };
     }
 }
 
 
+const datapackErrors = error {
+    UnknownCommand,
+    MissingArguments
+};
 
 const Commands = enum {
     none,
@@ -264,7 +275,7 @@ fn evalCmd(command: []const u8) !void {
         .give => try give(command[context_index..]),
         .clear => try clear(command[context_index..]),
         else => {
-            std.debug.print("\nSkipped unknown command'{s}'", .{command});
+            return datapackErrors.UnknownCommand;
         }
     }
 }
@@ -295,7 +306,7 @@ fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) ?[]c
 
 
 
-const FunctionCommandFunctionErrors = error {
+const StdErrors = error {
     OutOfMemory,
     FileNotFound,
     AccessDenied,
@@ -332,7 +343,9 @@ const FunctionCommandFunctionErrors = error {
     StreamTooLong
 };
 
-fn function(context: []const u8) FunctionCommandFunctionErrors!void {
+const AllErrors = StdErrors || datapackErrors;
+
+fn function(context: []const u8) AllErrors!void {
     var context_index: usize = 0;
     const function_path = getNextArgument(context, &context_index, ' ').?;
 
