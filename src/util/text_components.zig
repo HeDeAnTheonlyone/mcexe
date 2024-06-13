@@ -84,7 +84,7 @@
 //     // insertion: []const u8,    // Maye instead of inserting text to the chat, make it copy to clipboard.
 //     // click_event: .{} = .{},
 //     // hover_event: .{} = .{},
-//     // extra: @This() = .{}
+//     extra: *Object = .{}
 // };
 
 // const TextComponent = struct {

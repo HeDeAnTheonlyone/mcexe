@@ -36,7 +36,7 @@ pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []T,
         else if (element == scalar){
             try clean_buffer.appendSlice(buffer[last_index..index]);
             last_index = index + 1;
-    }
+        }
     }
     return clean_buffer;
 }

@@ -23,7 +23,7 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
     defer allocator.free(full_path);
-
+    
     const file = try std.fs.openFileAbsolute(full_path, .{});
     defer file.close();
 
@@ -37,9 +37,12 @@ pub fn getFuncFilesList(allocator: std.mem.Allocator, pack_path: []const u8, com
 
 /// The contents of the read function
 pub const Function = struct {
+    allocator: std.mem.Allocator,
+    path: []const u8,
     name: []const u8,
     raw_commands: ArrayList(u8),
     commands: std.mem.SplitIterator(u8, .scalar),
+    current_line: usize = 0,
 
     /// Returns a struct that holds a mcfunction.
     pub fn init(allocator: std.mem.Allocator, pack_path: []const u8 , mc_function_path: []const u8) !Function {
@@ -66,6 +69,8 @@ pub const Function = struct {
         try sanatized_contents.insert(0, '\n'); // This line is to not having to use ArrayList.first(). ArrayList.next() can be used directly.
 
         return Function{
+            .allocator = allocator,
+            .path = mc_function_path,
             .name = blk: {
                 const name = try allocator.alloc(u8, mc_function_path.len);
                 @memcpy(name, mc_function_path);
