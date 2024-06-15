@@ -4,6 +4,7 @@ zig-cache/
 zig-out/
 test_pack/
 lib/
+zig/
 zig.exe
 mcexe.exe
 mcexe.pdb
