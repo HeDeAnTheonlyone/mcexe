@@ -1,6 +1,6 @@
 # ⚠️This project is very early in development and very far from being finished⚠️
 
-![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/mcexe.png)<br>
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/mcexe.png)<br>
 *(lizard in German is pronounced like exe and it is written in Zig, which also has a lizard as mascot)*<br>
 # mcexe
 mcexe is a transpiler that converts minecraft datapacks and commands into real executable programs.<br>
@@ -27,4 +27,4 @@ Because it uses Zig as intermediate language, it will have (nearly) all the capa
 
 ***
 
-![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/mcexe_big.png)
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/mcexe_big.png)

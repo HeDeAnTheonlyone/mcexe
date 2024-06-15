@@ -66,7 +66,7 @@ fn compileInterpetedCode(allocator: std.mem.Allocator, pack_path: []const u8) !v
     const exe_path = blk: {
         const parts = [2][]const u8{
             manager.settings.exe_dir_path,
-            "/zig.exe"
+            "/zig/zig.exe"
         };
         break :blk try std.mem.concat(allocator, u8, &parts);
     };
