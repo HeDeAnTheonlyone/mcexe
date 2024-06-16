@@ -13,6 +13,7 @@ pub fn main() !void {
 
     const allocator = manager.global_allocator;
 
+    //TODO add option to specify the compile mode (safe, release, fast, small)
     const args_arr = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args_arr);
 

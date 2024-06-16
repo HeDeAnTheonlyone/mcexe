@@ -70,4 +70,4 @@ pub const help_msg =
     \\  --path [path]               Set absolute or relative path to the target datapack
     \\                              (if option is not present or left blank it uses the current working directory)
     \\ 
-    ;
+;

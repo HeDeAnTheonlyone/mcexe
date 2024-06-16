@@ -24,12 +24,12 @@
 // };
 
 // const EntityNameObject = struct {
-//     selector = []const u8,
-//     seperator = TextComponent
+//     selector: []const u8,
+//     seperator: TextComponent
 // };
 
 // const KeybindObject = struct {
-//     keybind = enum {
+//     keybind: enum {
 //         key_advancements,
 //         key_attack,
 //         key_back,
@@ -87,7 +87,7 @@
 //     extra: *Object = .{}
 // };
 
-// const TextComponent = struct {
+// const TextComponent = union(enum) {
 //     obj: Object,
 //     array: []Object,
 //     string: []const u8
