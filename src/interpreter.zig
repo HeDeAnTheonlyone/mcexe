@@ -2,12 +2,15 @@
 const std = @import("std");
 const manager = @import("manager.zig");
 const f_collector = @import("util/file_collector.zig");
-const mc_data = @import("util/mc_data.zig");
+const parse_helper = @import("util/parse_helper.zig");
 const array = @import("util/array.zig");
 
-const getPrimaryCmd = mc_data.getPrimaryCmd;
-const getNextArgument = mc_data.getNextArgument;
+const DatapackErrors = parse_helper.DatapackErrors;
+const getPrimaryCmd = parse_helper.getPrimaryCmd;
+const getNextArgument = parse_helper.getNextArgument;
+const removeNamespaceOrReturn = parse_helper.removeNamespaceOrReturn;
 const ArrayList = std.ArrayList;
+const StringHashMap = std.StringHashMap;
 
 
 
@@ -15,20 +18,22 @@ pub var status: Status = undefined;
 
 const Status = struct {
     allocator: std.mem.Allocator,
-    imports: std.ArrayList([]const u8),
-    function_stack: std.ArrayList([]const u8),
-    function_map: std.StringHashMap(InterpretedFunction),
+    imports: ArrayList([]const u8),
+    function_stack: ArrayList([]const u8),
+    function_map: StringHashMap(InterpretedFunction),
     current_function: *InterpretedFunction,
     current_line: usize = 0,
     var_count: usize = 0,
+    entities: StringHashMap(Entity),
 
     fn init(allocator: std.mem.Allocator) !Status {
         return Status {
             .allocator = allocator,
-            .imports = std.ArrayList([]const u8).init(allocator),
-            .function_stack = std.ArrayList([]const u8).init(allocator),
-            .function_map = std.StringHashMap(InterpretedFunction).init(allocator),
-            .current_function = undefined
+            .imports = ArrayList([]const u8).init(allocator),
+            .function_stack = ArrayList([]const u8).init(allocator),
+            .function_map = StringHashMap(InterpretedFunction).init(allocator),
+            .current_function = undefined,
+            .entities = StringHashMap(Entity).init(allocator)
         };
     }
 
@@ -36,6 +41,7 @@ const Status = struct {
         self.imports.deinit();
         self.function_stack.deinit();
         self.function_map.deinit();
+        self.entities.deinit();
     }
 
     /// Creates a new Function entry if it doesn't already exist, puts it on top of the functions stack and sets it as current function.
@@ -73,6 +79,20 @@ const Status = struct {
             try self.imports.append(import_code);
         }
     }
+
+    fn addEntity(self: *Status, entity: Entity) !void {
+        const hash = try std.fmt.allocPrint(self.allocator, "{d}-{d}-{d}-{d}", .{entity.Uuid[0], entity.Uuid[1], entity.Uuid[2], entity.Uuid[3]});
+        defer self.allocator.free(hash);
+
+        if (self.entities.contains(hash)) return DatapackErrors.EntityAlreadyExists;
+
+        self.entities.put(hash, Entity);
+    }
+
+    // TODO
+    // fn removeEntity(self: *Status, entity: Entity) !void {
+
+    // }
 
     /// Generates the output files and writes the interpreted code to it.
     pub fn flushCode(self: *Status, pack_path: []const u8, load_function_names: std.ArrayList([]const u8)) !void {
@@ -256,7 +276,7 @@ pub fn evalFunction(func: *f_collector.Function) !void {
 
 
 
-const Commands = mc_data.Commands;
+const Commands = parse_helper.Commands;
 
 fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
@@ -267,9 +287,9 @@ fn evalCmd(command: []const u8) !void {
         .say => try say(command[context_index..]),
         .give => try give(command[context_index..]),
         .clear => try clear(command[context_index..]),
-        //.summon => try summon(command[context_index..]),
+        .summon => try summon(command[context_index..]),
         else => {
-            return mc_data.datapackErrors.UnknownCommand;
+            return DatapackErrors.UnknownCommand;
         }
     }
 }
@@ -313,7 +333,7 @@ const StdErrors = error {
     StreamTooLong
 };
 
-const AllErrors = StdErrors || mc_data.datapackErrors;
+const AllErrors = StdErrors || DatapackErrors;
 
 fn function(context: []const u8) AllErrors!void {
     var context_index: usize = 0;
@@ -361,7 +381,7 @@ fn say(context: []const u8) !void {
 
 
 
-const FileInfo = mc_data.FileInfo;
+const FileInfo = parse_helper.FileInfo;
 
 fn give(context: []const u8) !void {
     const file_info = FileInfo.parse(context);
@@ -409,3 +429,23 @@ fn clear(context: []const u8) !void {
 
 
 
+const Entity = parse_helper.Entity;
+
+fn summon(context: []const u8) !void {
+    var context_index: usize = 0;
+    const entity_type = removeNamespaceOrReturn(getNextArgument(context, context_index, ' '), "minecraft");
+
+    // check coordinates to be ~ ~ ~
+    for (getNextArgument(context, context_index, ' '), 1..3) |arg, _| {
+        if (arg != '~') return DatapackErrors.UnknownArgument;
+    }
+    
+    context_index += 1;
+    const nbt = getNextArgument(context, context_index, '}').?;
+
+    const entity = try Entity.parse(entity_type, nbt);
+    
+    status.addEntity(entity);
+
+    // TODO add the text nbt code to the output
+}

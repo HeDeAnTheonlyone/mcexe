@@ -3,9 +3,12 @@ const std = @import("std");
 
 
 
-pub const datapackErrors = error {
+pub const DatapackErrors = error {
     UnknownCommand,
-    MissingArguments
+    MissingArgument,
+    UnknownArgument,
+    UnknownEntityType,
+    EntityAlreadyExists
 };
 
 
@@ -50,20 +53,24 @@ pub fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) 
 
 
 
-fn getNbtValue(components: []const u8, component_key: []const u8, value_type: enum {string, number}) []const u8 {
-    const start_index = if (std.mem.indexOf(u8, components, component_key)) |index| index + component_key.len else return "";
+fn getNbtValue(nbt: []const u8, key: []const u8, value_type: enum {string, number, array}) []const u8 {
+    const start_index = if (std.mem.indexOf(u8, nbt, key)) |index| index + key.len else return "";
     var end_index = start_index + 1;
     
-    if (value_type == .string) {
-        while (true) : (end_index += 1) {
-            if (components[end_index] == '"' and !(components[end_index - 1] == '\\')) break;
-        }
+    switch (value_type) {
+        .string => while (end_index < nbt.len) : (end_index += 1) {
+            if (nbt[end_index] == '"' and nbt[end_index - 1] != '\\') break;
+        },
+        .number => while (end_index < nbt.len and nbt[end_index] != ',') : (end_index += 1) {},
+        .array => while (end_index < nbt.len and nbt[end_index != ']']) : (end_index += 1) {}
     }
-    else {
-        while (end_index < components.len and components[end_index] != ',') : (end_index += 1) {}
-    }
-    return components[start_index..end_index];
+
+    return nbt[start_index..end_index];
 }
+
+
+
+pub fn removeNamespaceOrReturn(id: []const u8, namespace: []const u8) []const u8 { return if (std.mem.startsWith(u8, id, namespace)) id[namespace.len + 1..] else id; }
 
 
 
@@ -107,7 +114,7 @@ pub const FileInfo = struct {
         //TODO currently only supports selectors that are names and plain @s
         return FileInfo {
             .path = if (std.mem.startsWith(u8, selector, "@")) "" else selector,
-            .extension = if (std.mem.startsWith(u8, item, "minecraft:")) itemToExtension(item[10..]) else itemToExtension(item),
+            .extension = itemToExtension(removeNamespaceOrReturn(item, "minecraft")),
             .name = item_component.item_name,
             .data = item_component.lore
         };
@@ -122,7 +129,54 @@ pub const FileInfo = struct {
 
 
 
+pub const EntityType = enum {
+    TextDisplay,
 
+    fn idToEnum(id: []const u8) !EntityType {
+        return if (std.mem.eql(u8, id, "text_display")) .TextDisplay
+            else DatapackErrors.UnknownEntity;
+    }
+};
 
+pub const Entity = struct {
+    entity_type: EntityType,
+    Uuid: [4]i32,
+    nbt: union(EntityType) {
+        TextDisplay: struct {
+            CustomName: []const u8,
+            text: []const u8,
+        }
+    },
+
+    pub fn parse(entity: []const u8, nbt: []const u8) !Entity {
+        const entity_type = try EntityType.idToEnum(entity);
+        return Entity {
+            .entity_type = entity_type,
+            .uuid = uuid_blk: {
+                const int_arr: [4]i32 = undefined;
+                const arr_str = getNbtValue(nbt, "UUID:[I;", .array);
+                var end: usize = 0;
+
+                for (0..3) |arr_index| {
+                    const start: usize = end;
+                    while (arr_str[end] != ',') : (end += 1) {}
+                    const num = arr_str[start..end];
+                    std.mem.trim(u8, num, " ");
+                    int_arr[arr_index] = try std.fmt.parseInt(i32, num, 10);
+                    end += 1;
+                }
+                break :uuid_blk int_arr;
+            },
+            .nbt = switch (entity_type) {
+                .TextDisplay => .{
+                    .TextDisplay = .{
+                        .CustomName = getNbtValue(nbt, "CustomName:\"", .string),
+                        .text = getNbtValue(nbt, "text:\"", .string)
+                    }
+                }
+            }
+        };
+    }
+};
 
 
