@@ -2,12 +2,15 @@
 const std = @import("std");
 const manager = @import("manager.zig");
 const f_collector = @import("util/file_collector.zig");
-const mc_data = @import("util/mc_data.zig");
+const parse_helper = @import("util/parse_helper.zig");
 const array = @import("util/array.zig");
 
-const getPrimaryCmd = mc_data.getPrimaryCmd;
-const getNextArgument = mc_data.getNextArgument;
+const DatapackErrors = parse_helper.DatapackErrors;
+const getPrimaryCmd = parse_helper.getPrimaryCmd;
+const getNextArgument = parse_helper.getNextArgument;
+const removeNamespaceOrReturn = parse_helper.removeNamespaceOrReturn;
 const ArrayList = std.ArrayList;
+const StringHashMap = std.StringHashMap;
 
 
 
@@ -15,20 +18,22 @@ pub var status: Status = undefined;
 
 const Status = struct {
     allocator: std.mem.Allocator,
-    imports: std.ArrayList([]const u8),
-    function_stack: std.ArrayList([]const u8),
-    function_map: std.StringHashMap(InterpretedFunction),
+    imports: ArrayList([]const u8),
+    function_stack: ArrayList([]const u8),
+    function_map: StringHashMap(InterpretedFunction),
     current_function: *InterpretedFunction,
     current_line: usize = 0,
     var_count: usize = 0,
+    entities: StringHashMap(Entity),
 
     fn init(allocator: std.mem.Allocator) !Status {
         return Status {
             .allocator = allocator,
-            .imports = std.ArrayList([]const u8).init(allocator),
-            .function_stack = std.ArrayList([]const u8).init(allocator),
-            .function_map = std.StringHashMap(InterpretedFunction).init(allocator),
-            .current_function = undefined
+            .imports = ArrayList([]const u8).init(allocator),
+            .function_stack = ArrayList([]const u8).init(allocator),
+            .function_map = StringHashMap(InterpretedFunction).init(allocator),
+            .current_function = undefined,
+            .entities = StringHashMap(Entity).init(allocator)
         };
     }
 
@@ -36,6 +41,7 @@ const Status = struct {
         self.imports.deinit();
         self.function_stack.deinit();
         self.function_map.deinit();
+        self.entities.deinit();
     }
 
     /// Creates a new Function entry if it doesn't already exist, puts it on top of the functions stack and sets it as current function.
@@ -73,6 +79,17 @@ const Status = struct {
             try self.imports.append(import_code);
         }
     }
+
+    fn spawnEntity(self: *Status, entity: Entity) !void {
+        if (self.entities.contains(entity.uuid)) return DatapackErrors.EntityAlreadyExists;
+
+        try self.entities.put(entity.uuid, entity);
+    }
+
+    // TODO
+    // fn killEntity(self: *Status, entity: Entity) !void {
+
+    // }
 
     /// Generates the output files and writes the interpreted code to it.
     pub fn flushCode(self: *Status, pack_path: []const u8, load_function_names: std.ArrayList([]const u8)) !void {
@@ -246,17 +263,24 @@ pub fn evalFunction(func: *f_collector.Function) !void {
     try status.createNewFunction(func.name);
     defer status.finishCurrentFunction();
 
+    evalCmd(func.commands.first()) catch |err| outputErr(func, err);
+    
     while (func.commands.next()) |cmd| : (func.current_line += 1) {
         evalCmd(cmd) catch |err| {
-            // TODO stop ignoring and hiding all the leaked memory on error!
-            std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+            outputErr(func, err);
         };
     }
 }
 
+fn outputErr(func: *f_collector.Function, err: AllErrors) void {
+            // TODO stop ignoring and hiding all the leaked memory on error!
+    std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+    std.process.exit(1);
+}
 
 
-const Commands = mc_data.Commands;
+
+const Commands = parse_helper.Commands;
 
 fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
@@ -267,9 +291,9 @@ fn evalCmd(command: []const u8) !void {
         .say => try say(command[context_index..]),
         .give => try give(command[context_index..]),
         .clear => try clear(command[context_index..]),
-        //.summon => try summon(command[context_index..]),
+        .summon => try summon(command[context_index..]),
         else => {
-            return mc_data.datapackErrors.UnknownCommand;
+            return DatapackErrors.UnknownCommand;
         }
     }
 }
@@ -313,7 +337,7 @@ const StdErrors = error {
     StreamTooLong
 };
 
-const AllErrors = StdErrors || mc_data.datapackErrors;
+const AllErrors = StdErrors || DatapackErrors;
 
 fn function(context: []const u8) AllErrors!void {
     var context_index: usize = 0;
@@ -361,7 +385,7 @@ fn say(context: []const u8) !void {
 
 
 
-const FileInfo = mc_data.FileInfo;
+const FileInfo = parse_helper.FileInfo;
 
 fn give(context: []const u8) !void {
     const file_info = FileInfo.parse(context);
@@ -409,3 +433,63 @@ fn clear(context: []const u8) !void {
 
 
 
+const Entity = parse_helper.Entity;
+
+fn summon(context: []const u8) !void {
+    var context_index: usize = 0;
+    const entity_type = removeNamespaceOrReturn(getNextArgument(context, &context_index, ' ').?, "minecraft");
+
+    // check coordinates to be ~ ~ ~
+    for (1..3) |_| {
+        if (!std.mem.eql(u8, getNextArgument(context, &context_index, ' ').?, "~")) return DatapackErrors.UnknownArgument;
+    }
+    context_index += 1;
+    
+    const nbt = getNextArgument(context, &context_index, '}').?;
+
+    var entity = try Entity.init(status.allocator, entity_type, nbt);
+    defer entity.deinit();
+    
+    try status.spawnEntity(entity);
+
+    switch (entity.nbt) {
+        .TextDisplay => |data| {
+            const code = blk: {
+                if (data.text.len == 0) {
+                    const parts = [5][]const u8{
+                        "const ",
+                        entity.uuid,
+                        " = try std.fs.cwd().createFile(\"",
+                        data.CustomName,
+                        "\", .{ .read = true, .truncate = false });",
+                    };
+                    break :blk try std.mem.concat(status.allocator, u8, &parts);
+                } 
+                else {
+                    const parts =[11][]const u8{
+                        "const ",
+                        entity.uuid,
+                        " = try std.fs.cwd().createFile(\"",
+                        data.CustomName,
+                        "\", .{ .read = true, .truncate = false });\ntry ",
+                        entity.uuid,
+                        ".seekFromEnd(0);\ntry ",
+                        entity.uuid,
+                        ".writeAll(\"",
+                        data.text,
+                        "\");"
+                    };
+                    break :blk try std.mem.concat(status.allocator, u8, &parts);
+                }
+            };
+            defer status.allocator.free(code);
+
+            try status.current_function.addCode(code);
+        },
+    }
+}
+
+// TODO
+// fn kill() !void {
+
+// }

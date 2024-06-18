@@ -23,20 +23,16 @@ pub fn containsAny(comptime T: type, haystack: []T, needles: []const T) ?usize {
     else null;
 }
 
-/// Returns a newly allocated ArrayList without the scalar value
-pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []T, scalar: T) !ArrayList(u8) {
-    var clean_buffer = ArrayList(u8).init(allocator);
-    
-    var last_index: usize = 0;
-    for (buffer, 0..) |element, index| {
-        if (index + 1 == buffer.len) {
-            try clean_buffer.appendSlice(buffer[last_index..index + 1]);
-            break;
-        }
-        else if (element == scalar){
-            try clean_buffer.appendSlice(buffer[last_index..index]);
-            last_index = index + 1;
+/// Returns a slice of newly allocated data without the scalar value
+pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []const T, scalar: T) ![]u8 {
+    const count = std.mem.count(T, buffer, &[1]T{scalar});
+    const clean_str = try allocator.alloc(T, buffer.len - count);
+    var i: usize = 0;
+    for (buffer) |char| {
+        if (char != scalar) {
+            clean_str[i] = char;
+            i += 1;
         }
     }
-    return clean_buffer;
+    return clean_str;
 }

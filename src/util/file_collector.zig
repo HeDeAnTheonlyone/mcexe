@@ -40,7 +40,7 @@ pub const Function = struct {
     allocator: std.mem.Allocator,
     path: []const u8,
     name: []const u8,
-    raw_commands: ArrayList(u8),
+    raw_commands: []const u8,
     commands: std.mem.SplitIterator(u8, .scalar),
     current_line: usize = 0,
 
@@ -64,9 +64,8 @@ pub const Function = struct {
         defer file.close();
 
         const contents = try file.reader().readAllAlloc(allocator, 1024 * 64);
-        var sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
+        const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
         allocator.free(contents);
-        try sanatized_contents.insert(0, '\n'); // This line is to not having to use ArrayList.first(). ArrayList.next() can be used directly.
 
         return Function{
             .allocator = allocator,
@@ -79,12 +78,12 @@ pub const Function = struct {
                 break :blk name;
             },
             .raw_commands = sanatized_contents,
-            .commands = std.mem.splitScalar(u8, sanatized_contents.items, '\n')
+            .commands = std.mem.splitScalar(u8, sanatized_contents, '\n')
         };
     }
 
     pub fn deinit(self: *Function) void {
         // name is later given to `interpreter.InterpretedFunction`, so it will be freed there.
-        self.raw_commands.deinit();
+        self.allocator.free(self.raw_commands);
     }
 };
