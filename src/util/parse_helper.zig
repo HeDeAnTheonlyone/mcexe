@@ -1,5 +1,6 @@
 
 const std = @import("std");
+const array = @import("array.zig");
 
 
 
@@ -54,18 +55,18 @@ pub fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) 
 
 
 fn getNbtValue(nbt: []const u8, key: []const u8, value_type: enum {string, number, array}) []const u8 {
-    const start_index = if (std.mem.indexOf(u8, nbt, key)) |index| index + key.len else return "";
-    var end_index = start_index + 1;
+    const start = if (std.mem.indexOf(u8, nbt, key)) |index| index + key.len else return "";
+    var end = start + 1;
     
     switch (value_type) {
-        .string => while (end_index < nbt.len) : (end_index += 1) {
-            if (nbt[end_index] == '"' and nbt[end_index - 1] != '\\') break;
+        .string => while (end < nbt.len) : (end += 1) {
+            if (nbt[end] == '"' and nbt[end - 1] != '\\') break;
         },
-        .number => while (end_index < nbt.len and nbt[end_index] != ',') : (end_index += 1) {},
-        .array => while (end_index < nbt.len and nbt[end_index != ']']) : (end_index += 1) {}
+        .number => while (end < nbt.len and nbt[end] != ',') : (end += 1) {},
+        .array => while (end < nbt.len and nbt[end] != ']') : (end += 1) {}
     }
 
-    return nbt[start_index..end_index];
+    return nbt[start..end];
 }
 
 
@@ -134,13 +135,14 @@ pub const EntityType = enum {
 
     fn idToEnum(id: []const u8) !EntityType {
         return if (std.mem.eql(u8, id, "text_display")) .TextDisplay
-            else DatapackErrors.UnknownEntity;
+            else DatapackErrors.UnknownEntityType;
     }
 };
 
 pub const Entity = struct {
+    allocator: std.mem.Allocator,
     entity_type: EntityType,
-    Uuid: [4]i32,
+    uuid: []const u8,
     nbt: union(EntityType) {
         TextDisplay: struct {
             CustomName: []const u8,
@@ -148,24 +150,28 @@ pub const Entity = struct {
         }
     },
 
-    pub fn parse(entity: []const u8, nbt: []const u8) !Entity {
+    pub fn init(allocator: std.mem.Allocator, entity: []const u8, nbt: []const u8) !Entity {
         const entity_type = try EntityType.idToEnum(entity);
         return Entity {
+            .allocator = allocator,
             .entity_type = entity_type,
             .uuid = uuid_blk: {
-                const int_arr: [4]i32 = undefined;
                 const arr_str = getNbtValue(nbt, "UUID:[I;", .array);
-                var end: usize = 0;
+                const clean_str = clean_blk: {
+                    const tmp = try array.removeScalar(u8, allocator, arr_str, ' ');
+                    std.mem.replaceScalar(u8, tmp, ',', '_');
+                    break :clean_blk tmp;
+                };
+                defer allocator.free(clean_str);
 
-                for (0..3) |arr_index| {
-                    const start: usize = end;
-                    while (arr_str[end] != ',') : (end += 1) {}
-                    const num = arr_str[start..end];
-                    std.mem.trim(u8, num, " ");
-                    int_arr[arr_index] = try std.fmt.parseInt(i32, num, 10);
-                    end += 1;
-                }
-                break :uuid_blk int_arr;
+                const uuid_str = str_blk: {
+                    const parts = [2][]const u8{
+                        "_",
+                        clean_str
+                    };
+                    break :str_blk try std.mem.concat(allocator, u8, &parts);
+                };
+                break :uuid_blk uuid_str;
             },
             .nbt = switch (entity_type) {
                 .TextDisplay => .{
@@ -176,6 +182,10 @@ pub const Entity = struct {
                 }
             }
         };
+    }
+
+    pub fn deinit(self: *Entity) void {
+        self.allocator.free(self.uuid);
     }
 };
 

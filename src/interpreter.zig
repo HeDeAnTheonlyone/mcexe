@@ -80,17 +80,14 @@ const Status = struct {
         }
     }
 
-    fn addEntity(self: *Status, entity: Entity) !void {
-        const hash = try std.fmt.allocPrint(self.allocator, "{d}-{d}-{d}-{d}", .{entity.Uuid[0], entity.Uuid[1], entity.Uuid[2], entity.Uuid[3]});
-        defer self.allocator.free(hash);
+    fn spawnEntity(self: *Status, entity: Entity) !void {
+        if (self.entities.contains(entity.uuid)) return DatapackErrors.EntityAlreadyExists;
 
-        if (self.entities.contains(hash)) return DatapackErrors.EntityAlreadyExists;
-
-        self.entities.put(hash, Entity);
+        try self.entities.put(entity.uuid, entity);
     }
 
     // TODO
-    // fn removeEntity(self: *Status, entity: Entity) !void {
+    // fn killEntity(self: *Status, entity: Entity) !void {
 
     // }
 
@@ -266,12 +263,19 @@ pub fn evalFunction(func: *f_collector.Function) !void {
     try status.createNewFunction(func.name);
     defer status.finishCurrentFunction();
 
+    evalCmd(func.commands.first()) catch |err| outputErr(func, err);
+    
     while (func.commands.next()) |cmd| : (func.current_line += 1) {
         evalCmd(cmd) catch |err| {
-            // TODO stop ignoring and hiding all the leaked memory on error!
-            std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+            outputErr(func, err);
         };
     }
+}
+
+fn outputErr(func: *f_collector.Function, err: AllErrors) void {
+            // TODO stop ignoring and hiding all the leaked memory on error!
+    std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+    std.process.exit(1);
 }
 
 
@@ -433,19 +437,59 @@ const Entity = parse_helper.Entity;
 
 fn summon(context: []const u8) !void {
     var context_index: usize = 0;
-    const entity_type = removeNamespaceOrReturn(getNextArgument(context, context_index, ' '), "minecraft");
+    const entity_type = removeNamespaceOrReturn(getNextArgument(context, &context_index, ' ').?, "minecraft");
 
     // check coordinates to be ~ ~ ~
-    for (getNextArgument(context, context_index, ' '), 1..3) |arg, _| {
-        if (arg != '~') return DatapackErrors.UnknownArgument;
+    for (1..3) |_| {
+        if (!std.mem.eql(u8, getNextArgument(context, &context_index, ' ').?, "~")) return DatapackErrors.UnknownArgument;
     }
-    
     context_index += 1;
-    const nbt = getNextArgument(context, context_index, '}').?;
-
-    const entity = try Entity.parse(entity_type, nbt);
     
-    status.addEntity(entity);
+    const nbt = getNextArgument(context, &context_index, '}').?;
 
-    // TODO add the text nbt code to the output
+    var entity = try Entity.init(status.allocator, entity_type, nbt);
+    defer entity.deinit();
+    
+    try status.spawnEntity(entity);
+
+    switch (entity.nbt) {
+        .TextDisplay => |data| {
+            const code = blk: {
+                if (data.text.len == 0) {
+                    const parts = [5][]const u8{
+                        "const ",
+                        entity.uuid,
+                        " = try std.fs.cwd().createFile(\"",
+                        data.CustomName,
+                        "\", .{ .read = true, .truncate = false });",
+                    };
+                    break :blk try std.mem.concat(status.allocator, u8, &parts);
+                } 
+                else {
+                    const parts =[11][]const u8{
+                        "const ",
+                        entity.uuid,
+                        " = try std.fs.cwd().createFile(\"",
+                        data.CustomName,
+                        "\", .{ .read = true, .truncate = false });\ntry ",
+                        entity.uuid,
+                        ".seekFromEnd(0);\ntry ",
+                        entity.uuid,
+                        ".writeAll(\"",
+                        data.text,
+                        "\");"
+                    };
+                    break :blk try std.mem.concat(status.allocator, u8, &parts);
+                }
+            };
+            defer status.allocator.free(code);
+
+            try status.current_function.addCode(code);
+        },
+    }
 }
+
+// TODO
+// fn kill() !void {
+
+// }
