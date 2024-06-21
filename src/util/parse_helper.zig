@@ -5,11 +5,12 @@ const array = @import("array.zig");
 
 
 pub const DatapackErrors = error {
-    UnknownCommand,
+    EntityAlreadyExists,
     MissingArgument,
+    UnknownCommand,
     UnknownArgument,
     UnknownEntityType,
-    EntityAlreadyExists
+    UnknownSelectorType,
 };
 
 
@@ -21,6 +22,8 @@ pub const Commands = enum {
     give,
     clear,
     summon,
+    kill,
+    data
 };
 
 
@@ -53,8 +56,8 @@ pub fn getNextArgument(command: []const u8, start_index: *usize, delimiter: u8) 
 }
 
 
-
-fn getNbtValue(nbt: []const u8, key: []const u8, value_type: enum {string, number, array}) []const u8 {
+/// This function searches and returns values from selector arguments, nbt data, and item components with the provided key.
+pub fn getDataValue(nbt: []const u8, key: []const u8, value_type: enum {string, number, array, compound}) []const u8 {
     const start = if (std.mem.indexOf(u8, nbt, key)) |index| index + key.len else return "";
     var end = start + 1;
     
@@ -63,7 +66,8 @@ fn getNbtValue(nbt: []const u8, key: []const u8, value_type: enum {string, numbe
             if (nbt[end] == '"' and nbt[end - 1] != '\\') break;
         },
         .number => while (end < nbt.len and nbt[end] != ',') : (end += 1) {},
-        .array => while (end < nbt.len and nbt[end] != ']') : (end += 1) {}
+        .array => while (end < nbt.len and nbt[end] != ']') : (end += 1) {},
+        .compound => while (end < nbt.len and nbt[end] != '}') : (end += 1) {}
     }
 
     return nbt[start..end];
@@ -83,8 +87,8 @@ const ItemComponents = struct {
 
     fn parse(components: []const u8) ItemComponents {
         return ItemComponents {
-            .item_name = getNbtValue(components, "item_name=\"", .string),
-            .lore = getNbtValue(components, "lore=\"", .string)
+            .item_name = getDataValue(components, "item_name=\"", .string),
+            .lore = getDataValue(components, "lore=\"", .string)
         };
     }
 };
@@ -114,7 +118,7 @@ pub const FileInfo = struct {
 
         //TODO currently only supports selectors that are names and plain @s
         return FileInfo {
-            .path = if (std.mem.startsWith(u8, selector, "@")) "" else selector,
+            .path = if (std.mem.startsWith(u8, selector, "@s")) "" else selector,
             .extension = itemToExtension(removeNamespaceOrReturn(item, "minecraft")),
             .name = item_component.item_name,
             .data = item_component.lore
@@ -133,8 +137,8 @@ pub const FileInfo = struct {
 pub const EntityType = enum {
     TextDisplay,
 
-    fn idToEnum(id: []const u8) !EntityType {
-        return if (std.mem.eql(u8, id, "text_display")) .TextDisplay
+    fn sringToEnum(string: []const u8) !EntityType {
+        return if (std.mem.eql(u8, string, "text_display")) .TextDisplay
             else DatapackErrors.UnknownEntityType;
     }
 };
@@ -151,33 +155,19 @@ pub const Entity = struct {
     },
 
     pub fn init(allocator: std.mem.Allocator, entity: []const u8, nbt: []const u8) !Entity {
-        const entity_type = try EntityType.idToEnum(entity);
+        const entity_type = try EntityType.stringToEnum(entity);
         return Entity {
             .allocator = allocator,
             .entity_type = entity_type,
             .uuid = uuid_blk: {
-                const arr_str = getNbtValue(nbt, "UUID:[I;", .array);
-                const clean_str = clean_blk: {
-                    const tmp = try array.removeScalar(u8, allocator, arr_str, ' ');
-                    std.mem.replaceScalar(u8, tmp, ',', '_');
-                    break :clean_blk tmp;
-                };
-                defer allocator.free(clean_str);
-
-                const uuid_str = str_blk: {
-                    const parts = [2][]const u8{
-                        "_",
-                        clean_str
-                    };
-                    break :str_blk try std.mem.concat(allocator, u8, &parts);
-                };
-                break :uuid_blk uuid_str;
+                const uuid_str = getDataValue(nbt, "UUID:[I;", .array);
+                break :uuid_blk try sanatizeUuid(allocator, uuid_str);
             },
             .nbt = switch (entity_type) {
                 .TextDisplay => .{
                     .TextDisplay = .{
-                        .CustomName = getNbtValue(nbt, "CustomName:\"", .string),
-                        .text = getNbtValue(nbt, "text:\"", .string)
+                        .CustomName = getDataValue(nbt, "CustomName:\"", .string),
+                        .text = getDataValue(nbt, "text:\"", .string)
                     }
                 }
             }
@@ -190,3 +180,132 @@ pub const Entity = struct {
 };
 
 
+
+// TODO this struct is incomplete and has to be extended when other commands get added
+pub const Selector = struct {
+    selector_type: []const u8,
+    arguments: ?struct {
+        nbt: []const u8,
+    },
+
+    pub fn parse(selector: []const u8) Selector {
+        const selector_type = if (std.mem.startsWith(u8, selector, "@")) selector[0..2] else selector[0..];
+
+        return Selector {
+            .selector_type = selector_type,
+            .arguments = if (selector_type[0] != '@') null
+                else .{
+                    .nbt = getDataValue(selector[2..], "nbt=", .compound),
+                }
+        };
+    }
+
+    // pub fn overwriteData(self: *Selector, new_nbt: []const u8) void {
+        
+    // }
+};
+
+
+
+/// FIX Dummy struct
+pub const Coordinates = struct {
+    x: f64,
+    y: f64,
+    z: f64,
+
+    pub fn parse(coordinates: []const u8) !Coordinates {
+        _ = coordinates;
+        return Coordinates{
+            .x = 10,
+            .y = 11,
+            .z = -9
+        };
+    }
+
+    pub fn overwriteData(self: *Coordinates) void {
+        _ = self;
+    }
+};
+
+
+
+/// FIX Dummy struct
+pub const Storage = struct {
+    namespace: []const u8,
+    path: []const u8,
+
+    pub fn parse(storage: []const u8) !Storage {
+        _ = storage;
+        return Storage{
+            .namespace = "_a",
+            .path = "test/path"
+        };
+    }
+
+    pub fn overwriteData(self: *Storage) void {
+        _ = self;
+    }
+};
+
+
+
+/// Allocates new memory and creates a clean and usable uuid.
+pub fn sanatizeUuid(allocator: std.mem.Allocator, uuid: []const u8) ![]const u8 {
+    const tmp = try array.removeScalarAlloc(u8, allocator, uuid, ' ');
+    std.mem.replaceScalar(u8, tmp, ',', '_');
+    defer allocator.free(tmp);
+
+    const parts = [2][]const u8{
+        "_",
+        tmp
+    };
+    return try std.mem.concat(allocator, u8, &parts);
+}
+
+
+
+pub const DataModificationMethods = enum {
+    Merge,
+    Modify,
+    Remove,
+    Get,
+
+    pub fn stringToEnum(string: []const u8) !DataModificationMethods {
+        return if (std.mem.eql(u8, string, "modify")) .Modify
+        else if (std.mem.eql(u8, string, "get")) .Get
+        else if (std.mem.eql(u8, string, "merge")) .Merge
+        else if (std.mem.eql(u8, string, "remove")) .Remove
+        else DatapackErrors.UnknownArgument;
+    }
+};
+
+
+
+pub const DataModificationTarget = enum {
+    Entity,
+    Storage,
+    Block,
+
+    pub fn stringToEnum(string: []const u8) !DataModificationTarget {
+        return if (std.mem.eql(u8, string, "modify")) .Entity
+        else if (std.mem.eql(u8, string, "get")) .Storage
+        else if (std.mem.eql(u8, string, "merge")) .Block
+        else DatapackErrors.UnknownArgument;
+    }
+};
+
+
+
+// pub const Target = union(DataModificationTarget){
+//     Entity: Selector,
+//     Block: Coordinates,
+//     Storage: Storage,
+
+//     fn parse(target_type: DataModificationTarget, target: []const u8) Target {
+//         return switch (target_type) {
+//             .Entity => Target{ .Entity = Selector.parse(target)},
+//             .Block => Target{ .Block = Coordinates.parse(target)},
+//             .Storage => Target{ .Storage = Storage.parse(target)},
+//         };
+//     }
+// };

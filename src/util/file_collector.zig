@@ -64,7 +64,7 @@ pub const Function = struct {
         defer file.close();
 
         const contents = try file.reader().readAllAlloc(allocator, 1024 * 64);
-        const sanatized_contents = try array.removeScalar(u8, allocator, contents, '\r');
+        const sanatized_contents = try array.removeScalarAlloc(u8, allocator, contents, '\r');
         allocator.free(contents);
 
         return Function{

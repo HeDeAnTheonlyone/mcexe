@@ -8,7 +8,12 @@ const array = @import("util/array.zig");
 const DatapackErrors = parse_helper.DatapackErrors;
 const getPrimaryCmd = parse_helper.getPrimaryCmd;
 const getNextArgument = parse_helper.getNextArgument;
+const getDataValue = parse_helper.getDataValue;
 const removeNamespaceOrReturn = parse_helper.removeNamespaceOrReturn;
+const Selector = parse_helper.Selector;
+const Coordinates = parse_helper.Coordinates;
+const Target = parse_helper.Target;
+const Storage = parse_helper.Storage;
 const ArrayList = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 
@@ -24,7 +29,7 @@ const Status = struct {
     current_function: *InterpretedFunction,
     current_line: usize = 0,
     var_count: usize = 0,
-    entities: StringHashMap(Entity),
+    entity_map: StringHashMap(Entity),
 
     fn init(allocator: std.mem.Allocator) !Status {
         return Status {
@@ -33,7 +38,7 @@ const Status = struct {
             .function_stack = ArrayList([]const u8).init(allocator),
             .function_map = StringHashMap(InterpretedFunction).init(allocator),
             .current_function = undefined,
-            .entities = StringHashMap(Entity).init(allocator)
+            .entity_map = StringHashMap(Entity).init(allocator),
         };
     }
 
@@ -41,7 +46,7 @@ const Status = struct {
         self.imports.deinit();
         self.function_stack.deinit();
         self.function_map.deinit();
-        self.entities.deinit();
+        self.entity_map.deinit();
     }
 
     /// Creates a new Function entry if it doesn't already exist, puts it on top of the functions stack and sets it as current function.
@@ -81,9 +86,8 @@ const Status = struct {
     }
 
     fn spawnEntity(self: *Status, entity: Entity) !void {
-        if (self.entities.contains(entity.uuid)) return DatapackErrors.EntityAlreadyExists;
-
-        try self.entities.put(entity.uuid, entity);
+        if (self.entity_map.contains(entity.uuid)) return DatapackErrors.EntityAlreadyExists;
+        try self.entity_map.put(entity.uuid, entity);
     }
 
     // TODO
@@ -113,7 +117,7 @@ const Status = struct {
             _ = try file.write("();\n");
         }
         _ = try file.write("\nstd.debug.print(\"\\nConsole closes in 5 seconds.\", .{});\n");
-        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);}\n\n\n\n");
+        _ = try file.write("std.time.sleep(5 * std.time.ns_per_s);\n}\n\n\n\n");
 
         var function_iterator = self.function_map.valueIterator();
         while (function_iterator.next()) |func| {
@@ -127,7 +131,7 @@ const Status = struct {
             for (func.top_vars.items) |top_var| {
                 _ = try file.write(top_var);
             }
-            _ = try file.write("\n\n");
+            _ = try file.write("\n");
             _ = try file.write(func.code.items);
             _ = try file.write("}\n\n");
 
@@ -285,13 +289,15 @@ const Commands = parse_helper.Commands;
 fn evalCmd(command: []const u8) !void {
     const primary_cmd = getPrimaryCmd(command) orelse return;
     const context_index = primary_cmd.len + 1;
-    
+
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
         .function => try function(command[context_index..]),
         .say => try say(command[context_index..]),
         .give => try give(command[context_index..]),
         .clear => try clear(command[context_index..]),
         .summon => try summon(command[context_index..]),
+        .kill => try kill(command[context_index..]),
+        // .data => try data(command[context_index..]),
         else => {
             return DatapackErrors.UnknownCommand;
         }
@@ -299,7 +305,7 @@ fn evalCmd(command: []const u8) !void {
 }
 
 
-
+// From here on downwards are all the functions that process and translate minecraft commands
 const StdErrors = error {
     OutOfMemory,
     FileNotFound,
@@ -443,24 +449,23 @@ fn summon(context: []const u8) !void {
     for (1..3) |_| {
         if (!std.mem.eql(u8, getNextArgument(context, &context_index, ' ').?, "~")) return DatapackErrors.UnknownArgument;
     }
-    context_index += 1;
+    context_index += 3;
     
     const nbt = getNextArgument(context, &context_index, '}').?;
 
-    var entity = try Entity.init(status.allocator, entity_type, nbt);
-    defer entity.deinit();
+    const entity = try Entity.init(status.allocator, entity_type, nbt);
     
     try status.spawnEntity(entity);
 
     switch (entity.nbt) {
-        .TextDisplay => |data| {
+        .TextDisplay => |d| {
             const code = blk: {
-                if (data.text.len == 0) {
+                if (d.text.len == 0) {
                     const parts = [5][]const u8{
                         "const ",
                         entity.uuid,
                         " = try std.fs.cwd().createFile(\"",
-                        data.CustomName,
+                        d.CustomName,
                         "\", .{ .read = true, .truncate = false });",
                     };
                     break :blk try std.mem.concat(status.allocator, u8, &parts);
@@ -470,13 +475,13 @@ fn summon(context: []const u8) !void {
                         "const ",
                         entity.uuid,
                         " = try std.fs.cwd().createFile(\"",
-                        data.CustomName,
+                        d.CustomName,
                         "\", .{ .read = true, .truncate = false });\ntry ",
                         entity.uuid,
                         ".seekFromEnd(0);\ntry ",
                         entity.uuid,
                         ".writeAll(\"",
-                        data.text,
+                        d.text,
                         "\");"
                     };
                     break :blk try std.mem.concat(status.allocator, u8, &parts);
@@ -489,7 +494,72 @@ fn summon(context: []const u8) !void {
     }
 }
 
-// TODO
-// fn kill() !void {
 
+
+fn kill(context: []const u8) !void {
+    var context_index: usize = 0;
+    const selector = Selector.parse(getNextArgument(context, &context_index, ' ').?);
+    
+    if (!std.mem.eql(u8, selector.selector_type, "@e")) return DatapackErrors.UnknownSelectorType;
+
+    const uuid = try parse_helper.sanatizeUuid(status.allocator, getDataValue(selector.arguments.?.nbt, "UUID:[I;", .array));
+    defer status.allocator.free(uuid);
+
+    var entity = status.entity_map.get(uuid) orelse return;
+    _ = status.entity_map.remove(uuid);
+    defer entity.deinit();
+
+    const code = switch (entity.entity_type) {
+        .TextDisplay => blk: {
+            const parts = [2][]const u8{
+                uuid,
+                ".close();"
+            };
+            break :blk try std.mem.concat(status.allocator, u8, &parts);
+        },
+    };
+    defer status.allocator.free(code);
+
+    try status.current_function.addCode(code);
+}
+
+
+
+// fn data(context: []const u8) !void {
+//     var context_index: usize = 0;
+//     const modify_method = getNextArgument(context, &context_index, ' ').?;
+//     const target_type = getNextArgument(context, &context_index, ' ').?;
+//     const target = getNextArgument(context, &context_index, ' ').?;
+//     const new_nbt = getDataValue(getNextArgument(context, &context_index, ' ').?, "text:\"", .string);
+
+//     switch (parse_helper.DataModificationMethods.stringToEnum(modify_method)) {
+//         .Merge => {
+//             const dataTarget = Target.parse(target_type, target);
+            
+//             switch (dataTarget) {
+//                 .Entity => |*d| d.overwriteData(new_nbt),
+//                 .Storage => |*d| d.overwriteData(),
+//                 .Block => |*d| d.overwriteData(),
+//             }
+//         },
+//         else => return DatapackErrors.UnknownArgument
+//     }
+
+//     const uuid = try parse_helper.sanatizeUuid(status.allocator, getDataValue(Selector.parse(target).arguments.?.nbt, "UUID:[I;", .array));
+//     defer status.allocator.free(uuid);
+
+//     const code = blk: {
+//         const parts = [5][]const u8{
+//             "try ",
+//             uuid,
+//             ".writeAll(\"",
+//             new_nbt,
+//             "\");"
+//         };
+//         break :blk try std.mem.concat(status.allocator, u8, &parts);
+//     };
+//     defer status.allocator.free(code);
+
+//     try status.current_function.addCode(code);
 // }
+
