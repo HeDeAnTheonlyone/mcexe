@@ -24,7 +24,7 @@ pub fn containsAny(comptime T: type, haystack: []T, needles: []const T) ?usize {
 }
 
 /// Returns a slice of newly allocated data without the scalar value
-pub fn removeScalar(comptime T: type, allocator: std.mem.Allocator, buffer: []const T, scalar: T) ![]u8 {
+pub fn removeScalarAlloc(comptime T: type, allocator: std.mem.Allocator, buffer: []const T, scalar: T) ![]u8 {
     const count = std.mem.count(T, buffer, &[1]T{scalar});
     const clean_str = try allocator.alloc(T, buffer.len - count);
     var i: usize = 0;
