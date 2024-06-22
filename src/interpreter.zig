@@ -27,7 +27,6 @@ const Status = struct {
     function_stack: ArrayList([]const u8),
     function_map: StringHashMap(InterpretedFunction),
     current_function: *InterpretedFunction,
-    current_line: usize = 0,
     var_count: usize = 0,
     entity_map: StringHashMap(Entity),
 
@@ -267,18 +266,18 @@ pub fn evalFunction(func: *f_collector.Function) !void {
     try status.createNewFunction(func.name);
     defer status.finishCurrentFunction();
 
-    evalCmd(func.commands.first()) catch |err| outputErr(func, err);
+    evalCmd(&func.current_line, func.commands.first()) catch |err| outputErr(func, func.commands.first(), err);
     
-    while (func.commands.next()) |cmd| : (func.current_line += 1) {
-        evalCmd(cmd) catch |err| {
-            outputErr(func, err);
+    while (func.commands.next()) |cmd| {
+        evalCmd(&func.current_line, cmd) catch |err| {
+            outputErr(func, cmd, err);
         };
     }
 }
 
-fn outputErr(func: *f_collector.Function, err: AllErrors) void {
+fn outputErr(func: *f_collector.Function, command: []const u8, err: AllErrors) void {
             // TODO stop ignoring and hiding all the leaked memory on error!
-    std.log.err("\x1B[31mCommand in function '{s}' at line {d} failed to transpile with the error: {any}\x1B[0m", .{func.path, func.current_line, err});
+    std.log.err("\x1B[31mIn function '{s}' the command '{s}' at line '{d}' failed to transpile with the error: '{any}'\x1B[0m", .{func.path, command, func.current_line, err});
     std.process.exit(1);
 }
 
@@ -286,26 +285,26 @@ fn outputErr(func: *f_collector.Function, err: AllErrors) void {
 
 const Commands = parse_helper.Commands;
 
-fn evalCmd(command: []const u8) !void {
+fn evalCmd(current_line: *usize, command: []const u8) !void {
+    current_line.* += 1;
     const primary_cmd = getPrimaryCmd(command) orelse return;
     const context_index = primary_cmd.len + 1;
+    const context = command[context_index..];
 
     switch (std.meta.stringToEnum(Commands, primary_cmd) orelse Commands.none) {
-        .function => try function(command[context_index..]),
-        .say => try say(command[context_index..]),
-        .give => try give(command[context_index..]),
-        .clear => try clear(command[context_index..]),
-        .summon => try summon(command[context_index..]),
-        .kill => try kill(command[context_index..]),
-        // .data => try data(command[context_index..]),
-        else => {
-            return DatapackErrors.UnknownCommand;
-        }
+        .function => try function(context),
+        .say => try say(context),
+        .give => try give(context),
+        .clear => try clear(context),
+        .summon => try summon(context),
+        .kill => try kill(context),
+        .data => try data(context),
+        else => return DatapackErrors.UnknownCommand
     }
 }
 
 
-// From here on downwards are all the functions that process and translate minecraft commands
+
 const StdErrors = error {
     OutOfMemory,
     FileNotFound,
@@ -345,6 +344,7 @@ const StdErrors = error {
 
 const AllErrors = StdErrors || DatapackErrors;
 
+// From here on downwards are all the functions that process and translate minecraft commands
 fn function(context: []const u8) AllErrors!void {
     var context_index: usize = 0;
     const function_path = getNextArgument(context, &context_index, ' ').?;
@@ -375,7 +375,7 @@ fn say(context: []const u8) !void {
         const parts = [3][]const u8{
             "_ = try stdout.write(\"",
             context,
-            "\\n\");"
+            "\");"
         };
         break :blk try std.mem.concat(status.allocator, u8, &parts);
     };
@@ -525,41 +525,51 @@ fn kill(context: []const u8) !void {
 
 
 
-// fn data(context: []const u8) !void {
-//     var context_index: usize = 0;
-//     const modify_method = getNextArgument(context, &context_index, ' ').?;
-//     const target_type = getNextArgument(context, &context_index, ' ').?;
-//     const target = getNextArgument(context, &context_index, ' ').?;
-//     const new_nbt = getDataValue(getNextArgument(context, &context_index, ' ').?, "text:\"", .string);
+fn data(context: []const u8) !void {
+    var context_index: usize = 0;
+    const modify_method = getNextArgument(context, &context_index, ' ').?;
+    const target_type = try parse_helper.DataModificationTarget.stringToEnum(getNextArgument(context, &context_index, ' ').?);
+    const target = getNextArgument(context, &context_index, ' ').?;
 
-//     switch (parse_helper.DataModificationMethods.stringToEnum(modify_method)) {
-//         .Merge => {
-//             const dataTarget = Target.parse(target_type, target);
+    switch (try parse_helper.DataModificationMethods.stringToEnum(modify_method)) {
+        .Merge => {
+            const dataTarget = Target.parse(target_type, target);
             
-//             switch (dataTarget) {
-//                 .Entity => |*d| d.overwriteData(new_nbt),
-//                 .Storage => |*d| d.overwriteData(),
-//                 .Block => |*d| d.overwriteData(),
-//             }
-//         },
-//         else => return DatapackErrors.UnknownArgument
-//     }
+            switch (dataTarget) {
+                .Entity => |*d| {
+                    const uuid = try parse_helper.sanatizeUuid(status.allocator, getDataValue(d.arguments.?.nbt, "UUID:[I;", .array));
+                    defer status.allocator.free(uuid);
+                    
+                    if (!status.entity_map.contains(uuid)) return DatapackErrors.EntityDoesNotExist;
 
-//     const uuid = try parse_helper.sanatizeUuid(status.allocator, getDataValue(Selector.parse(target).arguments.?.nbt, "UUID:[I;", .array));
-//     defer status.allocator.free(uuid);
+                    const new_nbt = getDataValue(getNextArgument(context, &context_index, ' ').?, "text:\"", .string);
+                    const code = blk: {
+                        const parts = [7][]const u8{
+                            "try ",
+                            uuid,
+                            ".seekTo(0);\ntry ",
+                            uuid,
+                            ".writeAll(\"",
+                            new_nbt,
+                            "\");"
+                        };
+                        break :blk try std.mem.concat(status.allocator, u8, &parts);
+                    };
+                    defer status.allocator.free(code);
 
-//     const code = blk: {
-//         const parts = [5][]const u8{
-//             "try ",
-//             uuid,
-//             ".writeAll(\"",
-//             new_nbt,
-//             "\");"
-//         };
-//         break :blk try std.mem.concat(status.allocator, u8, &parts);
-//     };
-//     defer status.allocator.free(code);
-
-//     try status.current_function.addCode(code);
-// }
+                    try status.current_function.addCode(code);
+                },
+                .Storage => |*d| {
+                    _ = d;
+                    return DatapackErrors.UnknownArgument;
+                },
+                .Block => |*d| {
+                    _ = d;
+                    return DatapackErrors.UnknownArgument;
+                }
+            }
+        },
+        else => return DatapackErrors.UnknownArgument
+    }
+}
 

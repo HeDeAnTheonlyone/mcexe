@@ -6,6 +6,7 @@ const array = @import("array.zig");
 
 pub const DatapackErrors = error {
     EntityAlreadyExists,
+    EntityDoesNotExist,
     MissingArgument,
     UnknownCommand,
     UnknownArgument,
@@ -137,7 +138,7 @@ pub const FileInfo = struct {
 pub const EntityType = enum {
     TextDisplay,
 
-    fn sringToEnum(string: []const u8) !EntityType {
+    fn stringToEnum(string: []const u8) !EntityType {
         return if (std.mem.eql(u8, string, "text_display")) .TextDisplay
             else DatapackErrors.UnknownEntityType;
     }
@@ -199,10 +200,6 @@ pub const Selector = struct {
                 }
         };
     }
-
-    // pub fn overwriteData(self: *Selector, new_nbt: []const u8) void {
-        
-    // }
 };
 
 
@@ -213,7 +210,7 @@ pub const Coordinates = struct {
     y: f64,
     z: f64,
 
-    pub fn parse(coordinates: []const u8) !Coordinates {
+    pub fn parse(coordinates: []const u8) Coordinates {
         _ = coordinates;
         return Coordinates{
             .x = 10,
@@ -234,7 +231,7 @@ pub const Storage = struct {
     namespace: []const u8,
     path: []const u8,
 
-    pub fn parse(storage: []const u8) !Storage {
+    pub fn parse(storage: []const u8) Storage {
         _ = storage;
         return Storage{
             .namespace = "_a",
@@ -283,29 +280,29 @@ pub const DataModificationMethods = enum {
 
 pub const DataModificationTarget = enum {
     Entity,
-    Storage,
     Block,
+    Storage,
 
     pub fn stringToEnum(string: []const u8) !DataModificationTarget {
-        return if (std.mem.eql(u8, string, "modify")) .Entity
-        else if (std.mem.eql(u8, string, "get")) .Storage
-        else if (std.mem.eql(u8, string, "merge")) .Block
+        return if (std.mem.eql(u8, string, "entity")) .Entity
+        else if (std.mem.eql(u8, string, "block")) .Storage
+        else if (std.mem.eql(u8, string, "storage")) .Block
         else DatapackErrors.UnknownArgument;
     }
 };
 
 
 
-// pub const Target = union(DataModificationTarget){
-//     Entity: Selector,
-//     Block: Coordinates,
-//     Storage: Storage,
+pub const Target = union(DataModificationTarget){
+    Entity: Selector,
+    Block: Coordinates,
+    Storage: Storage,
 
-//     fn parse(target_type: DataModificationTarget, target: []const u8) Target {
-//         return switch (target_type) {
-//             .Entity => Target{ .Entity = Selector.parse(target)},
-//             .Block => Target{ .Block = Coordinates.parse(target)},
-//             .Storage => Target{ .Storage = Storage.parse(target)},
-//         };
-//     }
-// };
+    pub fn parse(target_type: DataModificationTarget, target: []const u8) Target {
+        return switch (target_type) {
+            .Entity => Target{ .Entity = Selector.parse(target)},
+            .Block => Target{ .Block = Coordinates.parse(target)},
+            .Storage => Target{ .Storage = Storage.parse(target)},
+        };
+    }
+};
