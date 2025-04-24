@@ -12,4 +12,4 @@ This is a rewrite with a completely different approach than the original (transp
 
 ***
 
-![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/big_mcexe.png)
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/mcexe_big.png)
