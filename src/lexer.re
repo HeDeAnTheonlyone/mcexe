@@ -34,6 +34,7 @@ pub const LexerStatus = struct {
     yyinput: []const u8,
     yylimit: usize,
     line: usize = 1,
+    token_start: usize = 0,
     yycursor: usize = 0,
     yymarker: usize = 0,
     yyctxmarker: usize = 0,
@@ -52,7 +53,7 @@ pub const LexerStatus = struct {
             .token_type = token_type,
             .column = self.yycursor,
             .line = self.line,
-            .value = self.yyinput[self.yymarker..self.yycursor],
+            .value = self.yyinput[self.token_start..self.yycursor],
         };
     }
 };
@@ -62,7 +63,7 @@ pub fn lex(yyrecord: *LexerStatus) !Token {
         return yyrecord.getToken(.Eof);
     }
 
-    yyrecord.yymarker = yyrecord.yycursor;
+    yyrecord.token_start = yyrecord.yycursor;
 
     /*!re2c
         re2c:api = record;
@@ -89,14 +90,14 @@ pub fn lex(yyrecord: *LexerStatus) !Token {
 
         "=" { return yyrecord.getToken(.Equal); }
 
+        ".." { return yyrecord.getToken(.RangeOp); }
+
         " " { return yyrecord.getToken(.Space); } 
 
         string_literal { return yyrecord.getToken(.StringLiteral); }
 
         float_literal { return yyrecord.getToken(.FloatLiteral); }
         int_literal { return yyrecord.getToken(.IntLiteral); }
-
-        ".." { return yyrecord.getToken(.RangeOp); }
 
         "\r\n" | "\n\r" | "\n" {
             yyrecord.line += 1;
