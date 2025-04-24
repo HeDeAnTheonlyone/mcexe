@@ -1,6 +1,6 @@
 # ⚠️This project is early in development⚠️
 
-![mcexe logo](/assest/mcexe.png)<br>
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/mcexe.png)<br>
 *(lizard in German is pronounced like exe and it is written in Zig, which has a lizard as mascot)*<br>
 
 # What is mcexe?
@@ -12,4 +12,4 @@ This is a rewrite with a completely different approach than the original (transp
 
 ***
 
-![mcexe logo](/assest/mcexe_big.png)
+![mcexe logo](https://github.com/HeDeAnTheonlyone/mcexe/blob/main/assets/big_mcexe.png)
